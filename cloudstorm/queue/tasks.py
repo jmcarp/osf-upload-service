@@ -106,7 +106,7 @@ def push_file_complete(response, payload, signature):
     :param str signature: Signature from signed URL
     """
     return requests.put(
-        payload['urls']['finish'],
+        payload['finishUrl'],
         data=sign.build_hook_body({
             'status': 'success',
             'uploadSignature': signature,
@@ -127,7 +127,7 @@ def push_file_error(uuid, payload, signature):
     result = AsyncResult(uuid)
     error = result.result
     return requests.put(
-        payload['urls']['finish'],
+        payload['finishUrl'],
         data=sign.build_hook_body({
             'status': 'error',
             'reason': 'Upload to backend failed: {0}'.format(error.message),

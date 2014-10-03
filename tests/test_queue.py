@@ -50,7 +50,7 @@ def mock_container(monkeypatch):
 def mock_finish_url():
     httpretty.register_uri(
         'PUT',
-        payload['urls']['finish'],
+        payload['finishUrl'],
         status=httplib.OK,
         body='ack',
     )

@@ -6,6 +6,8 @@ import time
 import base64
 import collections
 
+import furl
+
 from cloudstorm import errors
 from cloudstorm import settings
 
@@ -57,18 +59,25 @@ def verify(signature, payload, key, digest):
     return signature == expected
 
 
-def build_upload_signature(seconds, urls, size, content_type):
+def build_upload_url(size, content_type, start_url, finish_url):
     payload = {
         'size': size,
         'type': content_type,
-        'expires': time.time() + seconds,
-        'urls': urls,
+        'startUrl': start_url,
+        'finishUrl': finish_url,
+        'expires': time.time() + settings.UPLOAD_EXPIRATION_SECONDS,
     }
-    return sign(
+    message, signature = sign(
         payload,
         settings.UPLOAD_HMAC_SECRET,
         settings.UPLOAD_HMAC_DIGEST,
     )
+    url = furl.furl(settings.DOMAIN)
+    url.args.update(dict(
+        message=message,
+        signature=signature,
+    ))
+    return url.url, payload
 
 
 def build_hook_body(payload):

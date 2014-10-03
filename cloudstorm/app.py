@@ -5,6 +5,10 @@ import json
 import uuid
 import httplib
 import logging
+import urlparse
+
+from webargs import Arg
+from webargs.tornadoparser import parser
 
 from tornado.ioloop import IOLoop
 from tornado import web, gen, httpclient
@@ -84,7 +88,7 @@ def teardown_file(file_pointer, content_length, payload, signature):
         logger.error('Unexpected content length. Aborting upload.')
         os.remove(file_pointer.name)
         http_client.fetch(
-            payload['urls']['finish'],
+            payload['finishUrl'],
             method='PUT',
             body=sign.build_hook_body({
                 'status': 'error',
@@ -94,7 +98,7 @@ def teardown_file(file_pointer, content_length, payload, signature):
         )
         raise web.HTTPError(
             httplib.BAD_REQUEST,
-            reason='Unexpected content size.',
+            reason='Unexpected content size',
         )
 
 
@@ -104,7 +108,7 @@ def teardown_incomplete_file(file_pointer, payload, signature):
     logger.error('Client disconnected. Aborting upload.')
     os.remove(file_pointer.name)
     http_client.fetch(
-        payload['urls']['finish'],
+        payload['finishUrl'],
         method='PUT',
         body=sign.build_hook_body({
             'status': 'error',
@@ -131,6 +135,48 @@ def int_or_none(text):
         return None
 
 
+def validate_size(value):
+    return value > 0
+
+
+def validate_url(value):
+    parsed = urlparse.urlparse(value)
+    return all([
+        getattr(parsed, part)
+        for part in ['scheme', 'netloc']
+    ])
+
+
+upload_url_args = {
+    'size': Arg(int, required=True, validate=validate_size),
+    'type': Arg(unicode),
+    'startUrl': Arg(unicode, required=True, validate=validate_url),
+    'finishUrl': Arg(unicode, required=True, validate=validate_url),
+}
+
+
+class UploadUrlHandler(web.RequestHandler):
+
+    def post(self):
+        args = parser.parse(upload_url_args, self.request)
+        url, _ = sign.build_upload_url(
+            args['size'],
+            args['type'],
+            args['startUrl'],
+            args['finishUrl'],
+        )
+        self.write({
+            'status': 'success',
+            'url': url,
+        })
+
+
+class DownloadUrlHandler(web.RequestHandler):
+
+    def get(self):
+        pass
+
+
 @web.stream_request_body
 class UploadHandler(web.RequestHandler):
 
@@ -148,7 +194,7 @@ class UploadHandler(web.RequestHandler):
         If either check fails, cancel upload.
         """
         self.payload, self.signature = verify_upload(self.request)
-        yield start_upload(self.payload['urls']['start'], self.signature)
+        yield start_upload(self.payload['startUrl'], self.signature)
         self.file_path = build_file_path(self.request, self.payload)
         self.file_pointer = open(self.file_path, 'wb')
         content_length_text = int_or_none(
@@ -190,7 +236,9 @@ class UploadHandler(web.RequestHandler):
 def make_app():
     return web.Application(
         [
-            web.url(r'/', UploadHandler),
+            web.url(r'/urls/upload/', UploadUrlHandler),
+            web.url(r'/urls/download/', DownloadUrlHandler),
+            web.url(r'/files/', UploadHandler),
         ],
         debug=True,
     )

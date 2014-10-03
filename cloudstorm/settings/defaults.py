@@ -5,6 +5,10 @@ import hashlib
 from cloudstorm.backend import contrib
 
 
+DOMAIN = 'http://localhost:8888/'
+
+UPLOAD_EXPIRATION_SECONDS = 15
+
 FILE_CACHE_PATH = '/tmp'
 
 # Backend options

@@ -69,26 +69,26 @@ def test_verify_invalid():
     assert not sign.verify(signature, payload, key, hashlib.sha1)
 
 
-def test_build_upload_signature(monkeypatch):
+def test_build_upload_url(monkeypatch):
     # The epoch happened 10 seconds ago
     mock_time = mock.Mock()
     mock_time.return_value = 10
     monkeypatch.setattr(time, 'time', mock_time)
-    seconds = 60
-    urls = {'callback': 'http://localhost:5000/'}
     size = 1024 * 1024
     content_type = 'application/json'
-    message, signature = sign.build_upload_signature(
-        seconds,
-        urls,
+    start_url = 'http://localhost:5000/start/'
+    finish_url = 'http://localhost:5000/finish/'
+    url, payload = sign.build_upload_url(
         size,
         content_type,
+        'http://localhost:5000/start/',
+        'http://localhost:5000/finish/',
     )
-    payload = sign.unserialize_payload(message)
     assert payload['size'] == size
     assert payload['type'] == content_type
-    assert payload['urls'] == urls
-    assert payload['expires'] == seconds + 10
+    assert payload['startUrl'] == start_url
+    assert payload['finishUrl'] == finish_url
+    assert payload['expires'] == settings.UPLOAD_EXPIRATION_SECONDS + 10
 
 
 def test_build_hook_body():

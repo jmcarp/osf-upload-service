@@ -1,6 +1,7 @@
 # Tornado app
 requests==2.4.1
 tornado==4.0.2
+git+https://github.com/jmcarp/webargs
 
 # Task queue
 celery==3.1.15

@@ -4,6 +4,7 @@ import mock
 import pytest
 
 import os
+import json
 import time
 import httplib
 import functools
@@ -17,6 +18,7 @@ from tornado import httputil
 from tornado import httpclient
 
 from cloudstorm import app
+from cloudstorm import sign
 from cloudstorm import settings
 
 from tests import utils
@@ -79,13 +81,83 @@ def file_count_increment(increment):
     return wrapper
 
 
+class TestUploadUrlHandler(testing.AsyncHTTPTestCase):
+
+    def get_app(self):
+        return app.make_app()
+
+    def setUp(self):
+        super(TestUploadUrlHandler, self).setUp()
+        self.size = 1024
+        self.content_type = 'application/json'
+        self.start_url = 'http://localhost:5000/start/'
+        self.finish_url = 'http://localhost:5000/finish/'
+
+    @mock.patch('time.time')
+    @testing.gen_test
+    def test_create_upload_url(self, mock_time):
+        mock_time.return_value = 15
+        url, _ = sign.build_upload_url(
+            self.size,
+            self.content_type,
+            self.start_url,
+            self.finish_url,
+        )
+        resp = yield self.http_client.fetch(
+            self.get_url('/urls/upload/'),
+            method='POST',
+            headers={'Content-Type': 'application/json'},
+            body=json.dumps({
+                'size': self.size,
+                'type': self.content_type,
+                'startUrl': self.start_url,
+                'finishUrl': self.finish_url,
+            }),
+        )
+        resp_data = json.loads(resp.body)
+        assert resp_data['status'] == 'success'
+        assert resp_data['url'] == url
+
+    @testing.gen_test
+    def test_create_upload_url_invalid_size(self):
+        with pytest.raises(httpclient.HTTPError) as excinfo:
+            resp = yield self.http_client.fetch(
+                self.get_url('/urls/upload/'),
+                method='POST',
+                headers={'Content-Type': 'application/json'},
+                body=json.dumps({
+                    'size': 'sobig',
+                    'type': self.content_type,
+                    'startUrl': self.start_url,
+                    'finishUrl': self.finish_url,
+                }),
+            )
+        assert excinfo.value.code == httplib.BAD_REQUEST
+
+    @testing.gen_test
+    def test_create_upload_url_invalid_urls(self):
+        with pytest.raises(httpclient.HTTPError) as excinfo:
+            resp = yield self.http_client.fetch(
+                self.get_url('/urls/upload/'),
+                method='POST',
+                headers={'Content-Type': 'application/json'},
+                body=json.dumps({
+                    'size': 'sobig',
+                    'type': self.content_type,
+                    'startUrl': 'invalidurl',
+                    'finishUrl': self.finish_url,
+                }),
+            )
+        assert excinfo.value.code == httplib.BAD_REQUEST
+
+
 class TestUploadHandler(testing.AsyncHTTPTestCase):
 
     def get_app(self):
         return app.make_app()
 
     def get_upload_url(self, message, signature):
-        url = furl.furl(self.get_url('/'))
+        url = furl.furl(self.get_url('/files/'))
         url.args['message'] = message
         url.args['signature'] = signature
         return url.url

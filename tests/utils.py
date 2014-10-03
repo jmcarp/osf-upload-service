@@ -21,11 +21,9 @@ def make_payload(**kwargs):
     payload = {
         'size': 1024 * 1024,
         'type': 'application/json',
+        'startUrl': 'http://localhost:5000/start/',
+        'finishUrl': 'http://localhost:5000/finish/',
         'expires': time.time() + 60,
-        'urls': {
-            'start': 'http://localhost:5000/start/',
-            'finish': 'http://localhost:5000/finish',
-        },
     }
     payload.update(kwargs)
     return payload
