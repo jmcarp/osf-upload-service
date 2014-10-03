@@ -1,0 +1,15 @@
+# Tornado app
+requests==2.4.1
+tornado==4.0.2
+
+# Task queue
+celery==3.1.15
+
+# Storage backends
+boto==2.32.1
+pyrax==1.9.2
+
+# Miscellaneous
+six==1.8.0
+furl==0.3.95
+

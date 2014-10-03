@@ -1,0 +1,11 @@
+language: python
+python:
+  - "2.7"
+
+install:
+  - travis_retry pip install invoke
+  - travis_retry invoke install
+
+script:
+  - invoke test
+

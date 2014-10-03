@@ -1,0 +1,8 @@
+-r requirements.txt
+
+invoke==0.9.0
+
+mock==1.0.1
+pytest==2.6.3
+httpretty==0.8.3
+pytest-httpretty==0.2.0
