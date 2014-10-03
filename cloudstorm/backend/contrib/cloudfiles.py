@@ -2,6 +2,8 @@
 
 import functools
 
+from dateutil.parser import parse as parse_date
+
 import pyrax
 
 from cloudstorm.backend import core
@@ -97,4 +99,16 @@ class CloudFilesObject(core.BaseObject):
 
     def _generate_signed_url(self, seconds, method='GET'):
         return self._pyrax_object.get_temp_url(seconds, method)
+
+    @property
+    def size(self):
+        return self._pyrax_object.bytes
+
+    @property
+    def date_modified(self):
+        return parse_date(self._pyrax_object.last_modified)
+
+    @property
+    def content_type(self):
+        return self._pyrax_object.content_type
 

@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
 
+from dateutil.parser import parse as parse_date
+
 from boto.s3.connection import S3Connection
 
 from cloudstorm.backend import core
@@ -23,7 +25,7 @@ class S3Client(core.BaseClient):
 class S3Container(core.BaseContainer):
 
     def __init__(self, s3_bucket, client):
-        self._s3_container = s3_bucket
+        self._s3_bucket = s3_bucket
         self._client = client
 
     def list_objects(self, prefix=None):
@@ -44,14 +46,11 @@ class S3Container(core.BaseContainer):
 
     def upload_file(self, fobj, name):
         _s3_key = (
-            self._s3_container.get_key(name) or
-            self._s3_container.new_key(name)
+            self._s3_bucket.get_key(name) or
+            self._s3_bucket.new_key(name)
         )
-        _s3_key = self._s3_bucket.send_file(
-            fobj,
-            obj_name=name,
-        )
-        return S3Object(_s3_object)
+        _s3_key.set_contents_from_file(fobj)
+        return S3Object(_s3_key, self)
 
 
 class S3Object(core.BaseObject):
@@ -71,4 +70,16 @@ class S3Object(core.BaseObject):
             expires_in=seconds,
             method=method,
         )
+
+    @property
+    def size(self):
+        return self._s3_key.size
+
+    @property
+    def date_modified(self):
+        return parse_date(self._s3_key.last_modified)
+
+    @property
+    def content_type(self):
+        return self._s3_key.content_type
 

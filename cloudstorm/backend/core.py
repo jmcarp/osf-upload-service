@@ -63,3 +63,15 @@ class BaseObject(object):
             )
         return self._generate_signed_url(seconds, method)
 
+    @abc.abstractproperty
+    def size(self):
+        pass
+
+    @abc.abstractproperty
+    def date_modified(self):
+        pass
+
+    @abc.abstractproperty
+    def content_type(self):
+        pass
+

@@ -12,4 +12,5 @@ pyrax==1.9.2
 # Miscellaneous
 six==1.8.0
 furl==0.3.95
+python-dateutil==2.2
 
