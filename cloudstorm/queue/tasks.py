@@ -1,13 +1,13 @@
 # -*- coding: utf-8 -*-
 
-import json
 import hashlib
 
 import requests
 from celery.result import AsyncResult
 
-from cloudstorm.queue import app
+from cloudstorm import sign
 from cloudstorm import settings
+from cloudstorm.queue import app
 
 
 class LazyContainer(object):
@@ -97,9 +97,9 @@ def push_file_complete(response, payload, signature):
     """
     return requests.put(
         payload['urls']['finish'],
-        data=json.dumps({
+        data=sign.build_hook_body({
             'status': 'success',
-            'signature': signature,
+            'uploadSignature': signature,
         }),
     )
 
@@ -116,11 +116,11 @@ def push_file_error(uuid, payload, signature):
     error = result.result
     return requests.put(
         payload['urls']['finish'],
-        data=json.dumps({
+        data=sign.build_hook_body({
             'status': 'error',
             'reason': 'Upload to backend failed: {0}'.format(error.message),
-            'signature': signature,
-        })
+            'uploadSignature': signature,
+        }),
     )
 
 

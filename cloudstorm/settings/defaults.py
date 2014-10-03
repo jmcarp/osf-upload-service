@@ -17,8 +17,10 @@ STORAGE_CLIENT_OPTIONS = {
 STORAGE_CONTAINER_NAME = None
 
 # HMAC options
-UPLOAD_HMAC_KEY = 'changeme'
+UPLOAD_HMAC_SECRET = 'changeme'
 UPLOAD_HMAC_DIGEST = hashlib.sha1
+WEBHOOK_HMAC_SECRET = 'changeme'
+WEBHOOK_HMAC_DIGEST = hashlib.sha1
 
 # Hashing options
 UPLOAD_PRIMARY_HASH = hashlib.sha256

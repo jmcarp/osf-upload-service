@@ -66,9 +66,22 @@ def build_upload_signature(seconds, urls, size, content_type):
     }
     return sign(
         payload,
-        settings.UPLOAD_HMAC_KEY,
+        settings.UPLOAD_HMAC_SECRET,
         settings.UPLOAD_HMAC_DIGEST,
     )
+
+
+def build_hook_body(payload):
+    _, signature = sign(
+        payload,
+        settings.WEBHOOK_HMAC_SECRET,
+        settings.WEBHOOK_HMAC_DIGEST,
+    )
+    body = {
+        'payload': payload,
+        'signature': signature,
+    }
+    return json.dumps(body)
 
 
 def get_argument_from_request(request, name, list_=False, default=None):
@@ -109,7 +122,7 @@ def verify_signature(request, payload, signature):
     valid_signature = verify(
         signature,
         payload,
-        settings.UPLOAD_HMAC_KEY,
+        settings.UPLOAD_HMAC_SECRET,
         settings.UPLOAD_HMAC_DIGEST,
     )
     if not valid_signature:

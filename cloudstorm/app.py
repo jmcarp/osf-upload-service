@@ -42,7 +42,7 @@ def start_upload(url, signature):
     """Notify metadata application that file upload has started. Catch and
     reraise errors.
 
-    :param str url: Webhook URL
+    :param str url: Webhook start URL
     :param str signature: Signature from signed URL
     :raise: `web.HTTPError` if error received from application
     """
@@ -50,8 +50,8 @@ def start_upload(url, signature):
         response = yield http_client.fetch(
             url,
             method='PUT',
-            body=json.dumps({
-                'signature': signature,
+            body=sign.build_hook_body({
+                'uploadSignature': signature,
             }),
         )
         raise gen.Return(response)
@@ -86,11 +86,11 @@ def teardown_file(file_pointer, content_length, payload, signature):
         http_client.fetch(
             payload['urls']['finish'],
             method='PUT',
-            body=json.dumps({
+            body=sign.build_hook_body({
                 'status': 'error',
                 'reason': 'Uploaded file has incorrect size',
-                'signature': signature,
-            })
+                'uploadSignature': signature,
+            }),
         )
         raise web.HTTPError(
             httplib.BAD_REQUEST,
@@ -106,10 +106,10 @@ def teardown_incomplete_file(file_pointer, payload, signature):
     http_client.fetch(
         payload['urls']['finish'],
         method='PUT',
-        body=json.dumps({
+        body=sign.build_hook_body({
             'status': 'error',
             'reason': 'Connection terminated',
-            'signature': signature,
+            'uploadSignature': signature,
         }),
     )
 
@@ -165,7 +165,7 @@ class UploadHandler(web.RequestHandler):
     def put(self):
         """After file is uploaded, push to backend via Celery.
         """
-        # tasks.push_file(self.payload, self.signature, self.file_path)
+        tasks.push_file(self.payload, self.signature, self.file_path)
 
     def on_connection_close(self, *args, **kwargs):
         """If upload is interrupted, notify metadata application.
@@ -178,7 +178,6 @@ class UploadHandler(web.RequestHandler):
     def on_finish(self):
         """Ensure that file is closed by the end of the request.
         """
-        # import pdb; pdb.set_trace()
         if self.content_length:
             teardown_file(
                 self.file_pointer,

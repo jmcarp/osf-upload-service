@@ -91,6 +91,19 @@ def test_build_upload_signature(monkeypatch):
     assert payload['expires'] == seconds + 10
 
 
+def test_build_hook_body():
+    payload = {'status': 'success'}
+    _, signature = sign.sign(
+        payload,
+        settings.WEBHOOK_HMAC_SECRET,
+        settings.WEBHOOK_HMAC_DIGEST,
+    )
+    body = sign.build_hook_body(payload)
+    body_data = json.loads(body)
+    assert body_data['payload'] == payload
+    assert body_data['signature'] == signature
+
+
 def test_get_payload_from_request():
     payload, message, signature = utils.make_signed_payload()
     url = furl.furl('http://localhost:5000/')

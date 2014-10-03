@@ -14,6 +14,7 @@ import tempfile
 
 from celery.result import AsyncResult
 
+from cloudstorm import sign
 from cloudstorm import settings
 
 # Run Celery tasks synchronously for testing
@@ -66,6 +67,15 @@ def check_upload_file_call(mock_container, temp_file):
     assert call[0][1] == hash_str
 
 
+def check_hook_signature(data):
+    assert sign.verify(
+        data['signature'],
+        data['payload'],
+        settings.WEBHOOK_HMAC_SECRET,
+        settings.WEBHOOK_HMAC_DIGEST,
+    )
+
+
 def test_get_hash(file_content, temp_file):
     expected = hashlib.sha1(file_content).hexdigest()
     for chunk_size in [128, 1024, 2048]:
@@ -84,8 +94,9 @@ def test_push_file_complete(mock_finish_url):
     resp = tasks.push_file_complete(None, payload, signature)
     assert resp.status_code == httplib.OK
     request_body = json.loads(resp.request.body)
-    assert request_body['status'] == 'success'
-    assert request_body['signature'] == signature
+    check_hook_signature(request_body)
+    assert request_body['payload']['status'] == 'success'
+    assert request_body['payload']['uploadSignature'] == signature
 
 
 @pytest.mark.httpretty
@@ -96,9 +107,10 @@ def test_push_file_error(mock_finish_url, monkeypatch):
     assert resp.status_code == httplib.OK
     # Success callback sends correct hook payload
     request_body = json.loads(resp.request.body)
-    assert request_body['status'] == 'error'
-    assert 'disaster' in request_body['reason']
-    assert request_body['signature'] == signature
+    check_hook_signature(request_body)
+    assert request_body['payload']['status'] == 'error'
+    assert 'disaster' in request_body['payload']['reason']
+    assert request_body['payload']['uploadSignature'] == signature
 
 
 @pytest.mark.httpretty
@@ -108,8 +120,9 @@ def test_push_file_integration_success(temp_file, mock_container, mock_finish_ur
     # Success callback sends correct hook payload
     request = httpretty.last_request()
     request_body = json.loads(request.body)
-    assert request_body['status'] == 'success'
-    assert request_body['signature'] == signature
+    check_hook_signature(request_body)
+    assert request_body['payload']['status'] == 'success'
+    assert request_body['payload']['uploadSignature'] == signature
 
 
 @pytest.mark.httpretty
@@ -128,7 +141,8 @@ def test_push_file_integration_error(temp_file, mock_container, mock_finish_url,
     # Error callback sends correct hook payload
     request = httpretty.last_request()
     request_body = json.loads(request.body)
-    assert request_body['status'] == 'error'
-    assert 'not my type' in request_body['reason']
-    assert request_body['signature'] == signature
+    check_hook_signature(request_body)
+    assert request_body['payload']['status'] == 'error'
+    assert 'not my type' in request_body['payload']['reason']
+    assert request_body['payload']['uploadSignature'] == signature
 

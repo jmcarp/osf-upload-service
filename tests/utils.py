@@ -35,7 +35,7 @@ def make_signed_payload(**kwargs):
     payload = make_payload(**kwargs)
     message, signature = sign.sign(
         payload,
-        settings.UPLOAD_HMAC_KEY,
+        settings.UPLOAD_HMAC_SECRET,
         settings.UPLOAD_HMAC_DIGEST,
     )
     return payload, message, signature
