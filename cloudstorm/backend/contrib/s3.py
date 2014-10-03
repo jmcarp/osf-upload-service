@@ -28,18 +28,22 @@ class S3Container(core.BaseContainer):
         self._s3_bucket = s3_bucket
         self._client = client
 
+    @property
+    def name(self):
+        return self._s3_bucket.name
+
     def list_objects(self, prefix=None):
         """
         :return: Generator of S3 keys
         """
-        _s3_keys = self._s3_container.list(prefix=prefix)
+        _s3_keys = self._s3_bucket.list(prefix=prefix)
         return (
             S3Object(each, self)
             for each in _s3_keys
         )
 
     def get_object(self, obj):
-        _s3_key = self._s3_container.get_key(obj)
+        _s3_key = self._s3_bucket.get_key(obj)
         if _s3_key is None:
             raise errors.NotFound
         return S3Object(_s3_key, self)
@@ -59,17 +63,9 @@ class S3Object(core.BaseObject):
         self._s3_key = s3_key
         self._container = container
 
-    def download(self):
-        return self._s3_key.get_contents_as_string()
-
-    def delete(self):
-        self._s3_key.delete()
-
-    def _generate_signed_url(self, seconds, method='GET'):
-        return self._s3_key._client.get_temp_url(
-            expires_in=seconds,
-            method=method,
-        )
+    @property
+    def name(self):
+        return self._s3_key.name
 
     @property
     def size(self):
@@ -82,4 +78,24 @@ class S3Object(core.BaseObject):
     @property
     def content_type(self):
         return self._s3_key.content_type
+
+    @property
+    def location(self):
+        return {
+            'service': 's3',
+            'container': self._container.name,
+            'object': self.name,
+        }
+
+    def download(self):
+        return self._s3_key.get_contents_as_string()
+
+    def delete(self):
+        self._s3_key.delete()
+
+    def _generate_signed_url(self, seconds, method='GET'):
+        return self._s3_key._client.get_temp_url(
+            expires_in=seconds,
+            method=method,
+        )
 

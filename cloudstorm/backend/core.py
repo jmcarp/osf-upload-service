@@ -22,6 +22,10 @@ class BaseClient(object):
 @six.add_metaclass(abc.ABCMeta)
 class BaseContainer(object):
 
+    @abc.abstractproperty
+    def name(self):
+        pass
+
     @abc.abstractmethod
     def list_objects(self, prefix=None):
         pass
@@ -37,6 +41,26 @@ class BaseContainer(object):
 
 @six.add_metaclass(abc.ABCMeta)
 class BaseObject(object):
+
+    @abc.abstractproperty
+    def name(self):
+        pass
+
+    @abc.abstractproperty
+    def size(self):
+        pass
+
+    @abc.abstractproperty
+    def date_modified(self):
+        pass
+
+    @abc.abstractproperty
+    def content_type(self):
+        pass
+
+    @abc.abstractproperty
+    def location(self):
+        pass
 
     @abc.abstractmethod
     def download(self):
@@ -62,16 +86,4 @@ class BaseObject(object):
                 )
             )
         return self._generate_signed_url(seconds, method)
-
-    @abc.abstractproperty
-    def size(self):
-        pass
-
-    @abc.abstractproperty
-    def date_modified(self):
-        pass
-
-    @abc.abstractproperty
-    def content_type(self):
-        pass
 

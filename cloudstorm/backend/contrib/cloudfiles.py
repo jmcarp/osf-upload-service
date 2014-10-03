@@ -60,6 +60,10 @@ class CloudFilesContainer(core.BaseContainer):
         self._pyrax_container = pyrax_container
         self._client = client
 
+    @property
+    def name(self):
+        return self._pyrax_container.name
+
     def list_objects(self, prefix=None):
         """
         :return: Generator of Cloud Files objects
@@ -91,14 +95,9 @@ class CloudFilesObject(core.BaseObject):
         self._pyrax_object = pyrax_object
         self._container = container
 
-    def download(self):
-        return self._pyrax_object.fetch()
-
-    def delete(self):
-        self._pyrax_object.delete()
-
-    def _generate_signed_url(self, seconds, method='GET'):
-        return self._pyrax_object.get_temp_url(seconds, method)
+    @property
+    def name(self):
+        return self._pyrax_object.name
 
     @property
     def size(self):
@@ -111,4 +110,21 @@ class CloudFilesObject(core.BaseObject):
     @property
     def content_type(self):
         return self._pyrax_object.content_type
+
+    @property
+    def location(self):
+        return {
+            'service': 'cloudfiles',
+            'container': self._container.name,
+            'object': self.name,
+        }
+
+    def download(self):
+        return self._pyrax_object.fetch()
+
+    def delete(self):
+        self._pyrax_object.delete()
+
+    def _generate_signed_url(self, seconds, method='GET'):
+        return self._pyrax_object.get_temp_url(seconds, method)
 

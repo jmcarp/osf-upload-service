@@ -61,6 +61,16 @@ def get_hash(file_pointer, chunk_size, hash_function):
     return result.hexdigest()
 
 
+def get_metadata(file_object):
+    """Format metadata from backend file object.
+    """
+    return {
+        'size': file_object.size,
+        'date_modified': file_object.date_modified.isoformat(),
+        'content_type': file_object.content_type,
+    }
+
+
 @app.task
 def push_file_main(file_path):
     """Push file to storage backend, retrying on failure.
@@ -100,6 +110,8 @@ def push_file_complete(response, payload, signature):
         data=sign.build_hook_body({
             'status': 'success',
             'uploadSignature': signature,
+            'location': response.location,
+            'metadata': get_metadata(response),
         }),
     )
 

@@ -10,6 +10,7 @@ from tests import utils
 import json
 import hashlib
 import httplib
+import datetime
 import tempfile
 
 from celery.result import AsyncResult
@@ -55,6 +56,20 @@ def mock_finish_url():
     )
 
 
+@pytest.fixture
+def mock_file_object():
+    mock_object = mock.Mock()
+    mock_object.size = 1024
+    mock_object.date_modified = datetime.datetime.utcnow()
+    mock_object.content_type = 'application/json'
+    mock_object.location = {
+        'service': 'cloudfiles',
+        'container': 'queencontainer',
+        'object': 'albums/night-at-the-opera.mp3',
+    }
+    return mock_object
+
+
 def check_upload_file_call(mock_container, temp_file):
     hash_str = tasks.get_hash(
         temp_file,
@@ -90,8 +105,8 @@ def test_push_file_main(temp_file, mock_container, monkeypatch):
 
 
 @pytest.mark.httpretty
-def test_push_file_complete(mock_finish_url):
-    resp = tasks.push_file_complete(None, payload, signature)
+def test_push_file_complete(mock_finish_url, mock_file_object):
+    resp = tasks.push_file_complete(mock_file_object, payload, signature)
     assert resp.status_code == httplib.OK
     request_body = json.loads(resp.request.body)
     check_hook_signature(request_body)
@@ -114,7 +129,8 @@ def test_push_file_error(mock_finish_url, monkeypatch):
 
 
 @pytest.mark.httpretty
-def test_push_file_integration_success(temp_file, mock_container, mock_finish_url):
+def test_push_file_integration_success(temp_file, mock_container, mock_finish_url, mock_file_object):
+    mock_container.upload_file.return_value = mock_file_object
     result = tasks.push_file(payload, signature, temp_file.name).get()
     check_upload_file_call(mock_container, temp_file)
     # Success callback sends correct hook payload
