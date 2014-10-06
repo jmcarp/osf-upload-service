@@ -113,6 +113,7 @@ def push_file_complete(response, payload, signature):
             'location': response.location,
             'metadata': get_metadata(response),
         }),
+        headers={'Content-Type': 'application/json'},
     )
 
 
@@ -133,6 +134,7 @@ def push_file_error(uuid, payload, signature):
             'reason': 'Upload to backend failed: {0}'.format(error.message),
             'uploadSignature': signature,
         }),
+        headers={'Content-Type': 'application/json'},
     )
 
 

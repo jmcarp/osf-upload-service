@@ -79,7 +79,7 @@ def test_build_upload_url(monkeypatch):
     start_url = 'http://localhost:5000/start/'
     finish_url = 'http://localhost:5000/finish/'
     url, payload = sign.build_upload_url(
-        '/urls/upload/',
+        '/files/',
         size,
         content_type,
         'http://localhost:5000/start/',
@@ -92,7 +92,7 @@ def test_build_upload_url(monkeypatch):
     )
     expected_url = furl.furl(settings.DOMAIN)
     expected_url.port = settings.PORT
-    expected_url.path = '/urls/upload/'
+    expected_url.path = '/files/'
     expected_url.args.update({
         'message': message,
         'signature': signature,

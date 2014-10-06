@@ -98,7 +98,7 @@ class TestUploadUrlHandler(testing.AsyncHTTPTestCase):
     def test_create_upload_url(self, mock_time):
         mock_time.return_value = 15
         url, _ = sign.build_upload_url(
-            '/urls/upload/',
+            '/files/',
             self.size,
             self.content_type,
             self.start_url,

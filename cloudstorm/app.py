@@ -14,6 +14,7 @@ from tornado.ioloop import IOLoop
 from tornado import web, gen, httpclient
 
 from cloudstorm import sign
+from cloudstorm import utils
 from cloudstorm import errors
 from cloudstorm import settings
 from cloudstorm.queue import tasks
@@ -22,6 +23,13 @@ from cloudstorm.queue import tasks
 logger = logging.getLogger(__name__)
 
 http_client = httpclient.AsyncHTTPClient()
+
+
+CORS_ACCEPT_HEADERS = [
+    'Content-Type',
+    'Cache-Control',
+    'X-Requested-With',
+]
 
 
 def verify_upload(request):
@@ -57,6 +65,7 @@ def start_upload(url, signature):
             body=sign.build_hook_body({
                 'uploadSignature': signature,
             }),
+            headers={'Content-Type': 'application/json'},
         )
         raise gen.Return(response)
     except httpclient.HTTPError as error:
@@ -95,6 +104,7 @@ def teardown_file(file_pointer, content_length, payload, signature):
                 'reason': 'Uploaded file has incorrect size',
                 'uploadSignature': signature,
             }),
+            headers={'Content-Type': 'application/json'},
         )
         raise web.HTTPError(
             httplib.BAD_REQUEST,
@@ -159,7 +169,7 @@ class UploadUrlHandler(web.RequestHandler):
 
     def post(self):
         args = parser.parse(upload_url_args, self.request, targets=('json',))
-        base_url = self.reverse_url('upload_url')
+        base_url = self.reverse_url('upload_file')
         url, _ = sign.build_upload_url(
             base_url,
             args['size'],
@@ -182,19 +192,22 @@ class DownloadUrlHandler(web.RequestHandler):
 @web.stream_request_body
 class UploadHandler(web.RequestHandler):
 
-    def __init__(self, *args, **kwargs):
-        super(UploadHandler, self).__init__(*args, **kwargs)
+    def setup(self):
         self.payload = None
         self.signature = None
         self.file_path = None
         self.file_pointer = None
-        self.content_length = int_or_none(self.request.headers['Content-Length'])
+        self.content_length = int_or_none(
+            self.request.headers.get('Content-Length')
+        )
 
+    @utils.allow_methods(['put'])
     @gen.coroutine
     def prepare(self):
         """Verify signed URL and notify metadata application of upload start.
         If either check fails, cancel upload.
         """
+        self.setup()
         self.payload, self.signature = verify_upload(self.request)
         yield start_upload(self.payload['startUrl'], self.signature)
         self.file_path = build_file_path(self.request, self.payload)
@@ -203,6 +216,7 @@ class UploadHandler(web.RequestHandler):
             self.request.headers.get('Content-Length')
         )
 
+    @utils.allow_methods(['put'])
     def data_received(self, chunk):
         """Write data to disk.
 
@@ -210,11 +224,18 @@ class UploadHandler(web.RequestHandler):
         """
         self.file_pointer.write(chunk)
 
+    def options(self):
+        self.set_header('Access-Control-Allow-Origin', '*')
+        self.set_header('Access-Control-Allow-Headers', ', '.join(CORS_ACCEPT_HEADERS))
+        self.set_header('Access-Control-Allow-Methods', 'PUT'),
+        self.set_status(204)
+
     def put(self):
         """After file is uploaded, push to backend via Celery.
         """
         tasks.push_file(self.payload, self.signature, self.file_path)
 
+    @utils.allow_methods(['put'])
     def on_connection_close(self, *args, **kwargs):
         """If upload is interrupted, notify metadata application.
         """
@@ -223,10 +244,11 @@ class UploadHandler(web.RequestHandler):
             return
         teardown_incomplete_file(self.file_pointer, self.payload, self.signature)
 
+    @utils.allow_methods(['put'])
     def on_finish(self):
         """Ensure that file is closed by the end of the request.
         """
-        if self.content_length:
+        if self.file_pointer:
             teardown_file(
                 self.file_pointer,
                 self.content_length,
