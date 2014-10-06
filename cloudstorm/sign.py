@@ -59,7 +59,7 @@ def verify(signature, payload, key, digest):
     return signature == expected
 
 
-def build_upload_url(size, content_type, start_url, finish_url):
+def build_upload_url(base_url, size, content_type, start_url, finish_url):
     payload = {
         'size': size,
         'type': content_type,
@@ -73,6 +73,8 @@ def build_upload_url(size, content_type, start_url, finish_url):
         settings.UPLOAD_HMAC_DIGEST,
     )
     url = furl.furl(settings.DOMAIN)
+    url.port = settings.PORT
+    url.path = base_url
     url.args.update(dict(
         message=message,
         signature=signature,

@@ -158,8 +158,10 @@ upload_url_args = {
 class UploadUrlHandler(web.RequestHandler):
 
     def post(self):
-        args = parser.parse(upload_url_args, self.request)
+        args = parser.parse(upload_url_args, self.request, targets=('json',))
+        base_url = self.reverse_url('upload_url')
         url, _ = sign.build_upload_url(
+            base_url,
             args['size'],
             args['type'],
             args['startUrl'],
@@ -236,9 +238,9 @@ class UploadHandler(web.RequestHandler):
 def make_app():
     return web.Application(
         [
-            web.url(r'/urls/upload/', UploadUrlHandler),
-            web.url(r'/urls/download/', DownloadUrlHandler),
-            web.url(r'/files/', UploadHandler),
+            web.url(r'/urls/upload/', UploadUrlHandler, name='upload_url'),
+            web.url(r'/urls/download/', DownloadUrlHandler, name='download_url'),
+            web.url(r'/files/', UploadHandler, name='upload_file'),
         ],
         debug=True,
     )
@@ -246,7 +248,7 @@ def make_app():
 
 def main():
     app = make_app()
-    app.listen(7777)
+    app.listen(settings.PORT)
     IOLoop.current().start()
 
 

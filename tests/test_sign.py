@@ -79,11 +79,25 @@ def test_build_upload_url(monkeypatch):
     start_url = 'http://localhost:5000/start/'
     finish_url = 'http://localhost:5000/finish/'
     url, payload = sign.build_upload_url(
+        '/urls/upload/',
         size,
         content_type,
         'http://localhost:5000/start/',
         'http://localhost:5000/finish/',
     )
+    message, signature = sign.sign(
+        payload,
+        settings.UPLOAD_HMAC_SECRET,
+        settings.UPLOAD_HMAC_DIGEST,
+    )
+    expected_url = furl.furl(settings.DOMAIN)
+    expected_url.port = settings.PORT
+    expected_url.path = '/urls/upload/'
+    expected_url.args.update({
+        'message': message,
+        'signature': signature,
+    })
+    assert url == expected_url.url
     assert payload['size'] == size
     assert payload['type'] == content_type
     assert payload['startUrl'] == start_url
