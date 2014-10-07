@@ -53,6 +53,10 @@ class CloudFilesClient(core.BaseClient):
         _pyrax_container = self.connection.create_container(container)
         return CloudFilesContainer(_pyrax_container, self)
 
+    @ensure_connection
+    def _generate_signed_url(self, seconds, method, container, obj):
+        return self.connection.get_temp_url(container, obj, seconds, method)
+
 
 class CloudFilesContainer(core.BaseContainer):
 
@@ -87,6 +91,9 @@ class CloudFilesContainer(core.BaseContainer):
             obj_name=name,
         )
         return CloudFilesObject(_pyrax_object, self)
+
+    def _generate_signed_url(self, seconds, method, obj):
+        return self._pyrax_container.get_temp_url(obj, seconds, method)
 
 
 class CloudFilesObject(core.BaseObject):
@@ -125,6 +132,6 @@ class CloudFilesObject(core.BaseObject):
     def delete(self):
         self._pyrax_object.delete()
 
-    def _generate_signed_url(self, seconds, method='GET'):
+    def _generate_signed_url(self, seconds, method):
         return self._pyrax_object.get_temp_url(seconds, method)
 

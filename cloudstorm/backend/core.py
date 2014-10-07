@@ -8,7 +8,25 @@ SIGNED_URL_METHODS = ['GET', 'PUT']
 
 
 @six.add_metaclass(abc.ABCMeta)
-class BaseClient(object):
+class SignedUrlBase(object):
+
+    @abc.abstractmethod
+    def _generate_signed_url(self, seconds, method, *args, **kwargs):
+        pass
+
+    def generate_signed_url(self, seconds, method, *args, **kwargs):
+        if seconds <= 0:
+            raise ValueError('Parameter `seconds` must be positive')
+        if method not in SIGNED_URL_METHODS:
+            raise ValueError(
+                'Parameter `method` must be one of {}'.format(
+                    ', '.join(SIGNED_URL_METHODS)
+                )
+            )
+        return self._generate_signed_url(seconds, method, *args, **kwargs)
+
+
+class BaseClient(SignedUrlBase):
 
     @abc.abstractmethod
     def get_container(self, container):
@@ -19,8 +37,7 @@ class BaseClient(object):
         pass
 
 
-@six.add_metaclass(abc.ABCMeta)
-class BaseContainer(object):
+class BaseContainer(SignedUrlBase):
 
     @abc.abstractproperty
     def name(self):
@@ -39,8 +56,7 @@ class BaseContainer(object):
         pass
 
 
-@six.add_metaclass(abc.ABCMeta)
-class BaseObject(object):
+class BaseObject(SignedUrlBase):
 
     @abc.abstractproperty
     def name(self):
@@ -71,19 +87,4 @@ class BaseObject(object):
     @abc.abstractmethod
     def delete(self):
         pass
-
-    @abc.abstractmethod
-    def _generate_signed_url(self, seconds, method):
-        pass
-
-    def generate_signed_url(self, seconds, method='GET'):
-        if seconds <= 0:
-            raise ValueError('Parameter `seconds` must be positive')
-        if method not in SIGNED_URL_METHODS:
-            raise ValueError(
-                'Parameter `method` must be one of {}'.format(
-                    ', '.join(SIGNED_URL_METHODS)
-                )
-            )
-        return self._generate_signed_url(seconds, method)
 

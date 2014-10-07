@@ -21,6 +21,14 @@ class S3Client(core.BaseClient):
         _s3_bucket = self.connection.create_bucket(container)
         return S3Container(_s3_bucket, self)
 
+    def _generate_signed_url(self, seconds, method, container, obj):
+        return self.connection.generate_url(
+            expires_in=seconds,
+            method=method,
+            bucket=container,
+            key=obj,
+        )
+
 
 class S3Container(core.BaseContainer):
 
@@ -55,6 +63,14 @@ class S3Container(core.BaseContainer):
         )
         _s3_key.set_contents_from_file(fobj)
         return S3Object(_s3_key, self)
+
+    def _generate_signed_url(self, seconds, method, obj):
+        return self._client.generate_signed_url(
+            seconds,
+            method,
+            self.name,
+            obj,
+        )
 
 
 class S3Object(core.BaseObject):
@@ -93,9 +109,10 @@ class S3Object(core.BaseObject):
     def delete(self):
         self._s3_key.delete()
 
-    def _generate_signed_url(self, seconds, method='GET'):
-        return self._s3_key._client.get_temp_url(
-            expires_in=seconds,
-            method=method,
+    def _generate_signed_url(self, seconds, method):
+        return self._container.generate_signed_url(
+            seconds,
+            method,
+            self.name,
         )
 
