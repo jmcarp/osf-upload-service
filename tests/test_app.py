@@ -170,9 +170,10 @@ class TestUploadHandler(testing.AsyncHTTPTestCase):
         except OSError:
             pass
 
+    @mock.patch('cloudstorm.app.tasks.push_file')
     @mock.patch('cloudstorm.app.build_file_path')
     @testing.gen_test
-    def test_upload_file(self, mock_build_path):
+    def test_upload_file(self, mock_build_path, mock_push_file):
         mock_build_path.return_value = TEST_FILE_PATH
         length = 1024
         content_type = 'application/json'
