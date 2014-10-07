@@ -32,10 +32,10 @@ client_proxy = LazyContainer(_get_storage_client)
 
 
 def _get_storage_container():
-    return client_proxy.get().get_container(
+    return client_proxy.get().create_container(
         settings.STORAGE_CONTAINER_NAME
     )
-container_proxy = LazyContainer(_get_storage_client)
+container_proxy = LazyContainer(_get_storage_container)
 
 
 def iter_chunks(file_pointer, chunk_size):
@@ -85,7 +85,7 @@ def push_file_main(file_path):
         )
         file_pointer.seek(0)
         try:
-            return container_proxy.get().upload_file(file_pointer, hash_str)
+            obj = container_proxy.get().upload_file(file_pointer, hash_str)
         except Exception as error:
             try_count = push_file_main.request.retries + 1
             backoff = settings.UPLOAD_RETRY_BACKOFF * try_count
@@ -95,13 +95,17 @@ def push_file_main(file_path):
                 countdown=countdown,
                 max_retries=settings.UPLOAD_RETRY_ATTEMPTS,
             )
+    return {
+        'location': obj.location,
+        'metadata': get_metadata(obj),
+    }
 
 
 @app.task
 def push_file_complete(response, payload, signature):
     """Completion callback for `push_file_main`.
 
-    :param response: Storage object returned by `push_file_main`
+    :param response: Object data returned by `push_file_main`
     :param dict payload: Payload from signed URL
     :param str signature: Signature from signed URL
     """
@@ -110,8 +114,8 @@ def push_file_complete(response, payload, signature):
         data=sign.build_hook_body({
             'status': 'success',
             'uploadSignature': signature,
-            'location': response.location,
-            'metadata': get_metadata(response),
+            'location': response['location'],
+            'metadata': response['metadata'],
         }),
         headers={'Content-Type': 'application/json'},
     )

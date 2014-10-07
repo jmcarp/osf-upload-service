@@ -105,8 +105,12 @@ def test_push_file_main(temp_file, mock_container, monkeypatch):
 
 
 @pytest.mark.httpretty
-def test_push_file_complete(mock_finish_url, mock_file_object):
-    resp = tasks.push_file_complete(mock_file_object, payload, signature)
+def test_push_file_complete(mock_finish_url):
+    response = {
+        'location': {'service': 'cloud'},
+        'metadata': {'size': 1024},
+    }
+    resp = tasks.push_file_complete(response, payload, signature)
     assert resp.status_code == httplib.OK
     request_body = json.loads(resp.request.body)
     check_hook_signature(request_body)

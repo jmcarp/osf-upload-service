@@ -224,8 +224,10 @@ class UploadHandler(web.RequestHandler):
         """
         self.file_pointer.write(chunk)
 
-    def options(self):
+    def set_default_headers(self):
         self.set_header('Access-Control-Allow-Origin', '*')
+
+    def options(self):
         self.set_header('Access-Control-Allow-Headers', ', '.join(CORS_ACCEPT_HEADERS))
         self.set_header('Access-Control-Allow-Methods', 'PUT'),
         self.set_status(204)
@@ -234,6 +236,7 @@ class UploadHandler(web.RequestHandler):
         """After file is uploaded, push to backend via Celery.
         """
         tasks.push_file(self.payload, self.signature, self.file_path)
+        self.write({'status': 'success'})
 
     @utils.allow_methods(['put'])
     def on_connection_close(self, *args, **kwargs):
