@@ -6,6 +6,7 @@ import uuid
 import httplib
 import logging
 import urlparse
+import functools
 
 from webargs import Arg
 from webargs.tornadoparser import parser
@@ -16,6 +17,7 @@ from tornado import web, gen, httpclient
 from cloudstorm import sign
 from cloudstorm import utils
 from cloudstorm import errors
+from cloudstorm import storage
 from cloudstorm import settings
 from cloudstorm.queue import tasks
 
@@ -58,14 +60,19 @@ def start_upload(url, signature):
     :param str signature: Signature from signed URL
     :raise: `web.HTTPError` if error received from application
     """
+    signature, body = sign.build_hook_body(
+        sign.webhook_signer,
+        {'uploadSignature': signature},
+    )
     try:
         response = yield http_client.fetch(
             url,
             method='PUT',
-            body=sign.build_hook_body({
-                'uploadSignature': signature,
-            }),
-            headers={'Content-Type': 'application/json'},
+            body=body,
+            headers={
+                'Content-Type': 'application/json',
+                'X-Signature': signature,
+            },
         )
         raise gen.Return(response)
     except httpclient.HTTPError as error:
@@ -96,15 +103,22 @@ def teardown_file(file_pointer, content_length, payload, signature):
     if size != content_length:
         logger.error('Unexpected content length. Aborting upload.')
         os.remove(file_pointer.name)
-        http_client.fetch(
-            payload['finishUrl'],
-            method='PUT',
-            body=sign.build_hook_body({
+        signature, body = sign.build_hook_body(
+            sign.webhook_signer,
+            {
                 'status': 'error',
                 'reason': 'Uploaded file has incorrect size',
                 'uploadSignature': signature,
-            }),
-            headers={'Content-Type': 'application/json'},
+            },
+        )
+        http_client.fetch(
+            payload['finishUrl'],
+            method='PUT',
+            body=body,
+            headers={
+                'Content-Type': 'application/json',
+                'X-Signature': signature,
+            },
         )
         raise web.HTTPError(
             httplib.BAD_REQUEST,
@@ -117,14 +131,22 @@ def teardown_incomplete_file(file_pointer, payload, signature):
     """
     logger.error('Client disconnected. Aborting upload.')
     os.remove(file_pointer.name)
-    http_client.fetch(
-        payload['finishUrl'],
-        method='PUT',
-        body=sign.build_hook_body({
+    signature, body = sign.build_hook_body(
+        sign.webhook_signer,
+        {
             'status': 'error',
             'reason': 'Connection terminated',
             'uploadSignature': signature,
-        }),
+        }
+    )
+    http_client.fetch(
+        payload['finishUrl'],
+        method='PUT',
+        body=body,
+        headers={
+            'Content-Type': 'application/json',
+            'X-Signature': signature,
+        },
     )
 
 
@@ -165,12 +187,39 @@ upload_url_args = {
 }
 
 
+hmac_args = {
+    'X-Signature': Arg(str, required=True, target='headers'),
+}
+
+
+def verify_signature(signer):
+    def wrapper(func):
+        @functools.wraps(func)
+        def wrapped(self, *args, **kwargs):
+            parsed = parser.parse(hmac_args, self.request)
+            payload = json.loads(self.request.body)
+            valid = signer.verify_payload(parsed['X-Signature'], payload)
+            if not valid:
+                raise web.HTTPError(
+                    httplib.BAD_REQUEST,
+                    reason='Invalid signature',
+                )
+            return func(self, *args, **kwargs)
+        return wrapped
+    return wrapper
+
+
+verify_signature_urls = verify_signature(sign.url_signer)
+
+
 class UploadUrlHandler(web.RequestHandler):
 
+    @verify_signature_urls
     def post(self):
         args = parser.parse(upload_url_args, self.request, targets=('json',))
         base_url = self.reverse_url('upload_file')
         url, _ = sign.build_upload_url(
+            sign.upload_signer,
             base_url,
             args['size'],
             args['type'],
@@ -183,10 +232,32 @@ class UploadUrlHandler(web.RequestHandler):
         })
 
 
+def validate_location(value):
+    return 'container' in value and 'object' in value
+
+
+download_url_args = {
+    'location': Arg(dict, required=True, validate=validate_location),
+}
+
+
+def get_download_url(location):
+    client = storage.client_proxy.get()
+    return client.generate_signed_url(
+        settings.DOWNLOAD_EXPIRATION_SECONDS,
+        method='GET',
+        container=location['container'],
+        obj=location['object'],
+    )
+
+
 class DownloadUrlHandler(web.RequestHandler):
 
-    def get(self):
-        pass
+    @verify_signature_urls
+    def post(self):
+        args = parser.parse(download_url_args, self.request, targets=('json',))
+        url = get_download_url(args['location'])
+        self.write({'url': url})
 
 
 @web.stream_request_body

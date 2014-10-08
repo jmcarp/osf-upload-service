@@ -6,36 +6,9 @@ import requests
 from celery.result import AsyncResult
 
 from cloudstorm import sign
+from cloudstorm import storage
 from cloudstorm import settings
 from cloudstorm.queue import app
-
-
-class LazyContainer(object):
-    """Lazy container; defers computation of its contents until first call to
-    `get`. Used to simplify mocking of storage backend objects.
-    """
-    def __init__(self, getter):
-        self._result = None
-        self.getter = getter
-
-    def get(self):
-        if self._result is None:
-            self._result = self.getter()
-        return self._result
-
-
-def _get_storage_client():
-    return settings.STORAGE_CLIENT_CLASS(
-        **settings.STORAGE_CLIENT_OPTIONS
-    )
-client_proxy = LazyContainer(_get_storage_client)
-
-
-def _get_storage_container():
-    return client_proxy.get().create_container(
-        settings.STORAGE_CONTAINER_NAME
-    )
-container_proxy = LazyContainer(_get_storage_container)
 
 
 def iter_chunks(file_pointer, chunk_size):
@@ -85,7 +58,8 @@ def push_file_main(file_path):
         )
         file_pointer.seek(0)
         try:
-            obj = container_proxy.get().upload_file(file_pointer, hash_str)
+            container = storage.container_proxy.get()
+            obj = container.upload_file(file_pointer, hash_str)
         except Exception as error:
             try_count = push_file_main.request.retries + 1
             backoff = settings.UPLOAD_RETRY_BACKOFF * try_count
@@ -109,15 +83,22 @@ def push_file_complete(response, payload, signature):
     :param dict payload: Payload from signed URL
     :param str signature: Signature from signed URL
     """
-    return requests.put(
-        payload['finishUrl'],
-        data=sign.build_hook_body({
+    signature, body = sign.build_hook_body(
+        sign.webhook_signer,
+        {
             'status': 'success',
             'uploadSignature': signature,
             'location': response['location'],
             'metadata': response['metadata'],
-        }),
-        headers={'Content-Type': 'application/json'},
+        },
+    )
+    return requests.put(
+        payload['finishUrl'],
+        data=body,
+        headers={
+            'Content-Type': 'application/json',
+            'X-Signature': signature,
+        },
     )
 
 
@@ -131,14 +112,21 @@ def push_file_error(uuid, payload, signature):
     """
     result = AsyncResult(uuid)
     error = result.result
-    return requests.put(
-        payload['finishUrl'],
-        data=sign.build_hook_body({
+    signature, body = sign.build_hook_body(
+        sign.webhook_signer,
+        {
             'status': 'error',
             'reason': 'Upload to backend failed: {0}'.format(error.message),
             'uploadSignature': signature,
-        }),
-        headers={'Content-Type': 'application/json'},
+        },
+    )
+    return requests.put(
+        payload['finishUrl'],
+        data=body,
+        headers={
+            'Content-Type': 'application/json',
+            'X-Signature': signature,
+        },
     )
 
 

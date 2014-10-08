@@ -29,13 +29,9 @@ def make_payload(**kwargs):
     return payload
 
 
-def make_signed_payload(**kwargs):
+def make_signed_payload(signer, **kwargs):
     payload = make_payload(**kwargs)
-    message, signature = sign.sign(
-        payload,
-        settings.UPLOAD_HMAC_SECRET,
-        settings.UPLOAD_HMAC_DIGEST,
-    )
+    message, signature = signer.sign_payload(payload)
     return payload, message, signature
 
 
@@ -63,7 +59,6 @@ def make_request(method='GET', uri='', body='', headers=None, connection=None):
         files=request.files
     )
     return request
-
 
 
 def make_response(request, status):

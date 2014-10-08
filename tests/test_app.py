@@ -35,14 +35,14 @@ class TestStartUpload(testing.AsyncTestCase):
     def test_start_upload_success(self):
         with utils.StubFetch(app.http_client, 'PUT', status=httplib.CREATED):
             resp = yield app.start_upload(START_UPLOAD_URL, SIGNATURE)
-        assert resp.code == httplib.CREATED
+        assert resp.code == 201
 
     @testing.gen_test
     def test_start_upload_error(self):
         with utils.StubFetch(app.http_client, 'PUT', status=httplib.CONFLICT):
             with pytest.raises(web.HTTPError) as excinfo:
                 resp = yield app.start_upload(START_UPLOAD_URL, SIGNATURE)
-            assert excinfo.value.status_code == httplib.CONFLICT
+            assert excinfo.value.status_code == 409
 
 
 def make_producer(content=None, error=None):
@@ -98,22 +98,30 @@ class TestUploadUrlHandler(testing.AsyncHTTPTestCase):
     def test_create_upload_url(self, mock_time):
         mock_time.return_value = 15
         url, _ = sign.build_upload_url(
+            sign.upload_signer,
             '/files/',
             self.size,
             self.content_type,
             self.start_url,
             self.finish_url,
         )
-        resp = yield self.http_client.fetch(
-            self.get_url('/urls/upload/'),
-            method='POST',
-            headers={'Content-Type': 'application/json'},
-            body=json.dumps({
+        signature, body = sign.build_hook_body(
+            sign.url_signer,
+            {
                 'size': self.size,
                 'type': self.content_type,
                 'startUrl': self.start_url,
                 'finishUrl': self.finish_url,
-            }),
+            },
+        )
+        resp = yield self.http_client.fetch(
+            self.get_url('/urls/upload/'),
+            method='POST',
+            body=body,
+            headers={
+                'Content-Type': 'application/json',
+                'X-Signature': signature,
+            },
         )
         resp_data = json.loads(resp.body)
         assert resp_data['status'] == 'success'
@@ -121,35 +129,108 @@ class TestUploadUrlHandler(testing.AsyncHTTPTestCase):
 
     @testing.gen_test
     def test_create_upload_url_invalid_size(self):
+        signature, body = sign.build_hook_body(
+            sign.url_signer,
+            {
+                'size': 'sobig',
+                'type': self.content_type,
+                'startUrl': self.start_url,
+                'finishUrl': self.finish_url,
+            },
+        )
         with pytest.raises(httpclient.HTTPError) as excinfo:
             resp = yield self.http_client.fetch(
                 self.get_url('/urls/upload/'),
                 method='POST',
-                headers={'Content-Type': 'application/json'},
-                body=json.dumps({
-                    'size': 'sobig',
-                    'type': self.content_type,
-                    'startUrl': self.start_url,
-                    'finishUrl': self.finish_url,
-                }),
+                body=body,
+                headers={
+                    'Content-Type': 'application/json',
+                    'X-Signature': signature,
+                },
             )
-        assert excinfo.value.code == httplib.BAD_REQUEST
+        assert excinfo.value.code == 400
 
     @testing.gen_test
     def test_create_upload_url_invalid_urls(self):
+        signature, body = sign.build_hook_body(
+            sign.url_signer,
+            {
+                'size': 'sobig',
+                'type': self.content_type,
+                'startUrl': 'invalidurl',
+                'finishUrl': self.finish_url,
+            },
+        )
         with pytest.raises(httpclient.HTTPError) as excinfo:
             resp = yield self.http_client.fetch(
                 self.get_url('/urls/upload/'),
                 method='POST',
-                headers={'Content-Type': 'application/json'},
-                body=json.dumps({
-                    'size': 'sobig',
-                    'type': self.content_type,
-                    'startUrl': 'invalidurl',
-                    'finishUrl': self.finish_url,
-                }),
+                body=body,
+                headers={
+                    'Content-Type': 'application/json',
+                    'X-Signature': signature,
+                },
             )
-        assert excinfo.value.code == httplib.BAD_REQUEST
+        assert excinfo.value.code == 400
+
+
+class TestDownloadUrlHandler(testing.AsyncHTTPTestCase):
+
+    def get_app(self):
+        return app.make_app()
+
+    @mock.patch('cloudstorm.app.storage.client_proxy._result')
+    @testing.gen_test
+    def test_get_download_url(self, mock_client):
+        mock_signed_url = 'http://secret.com/'
+        mock_client.generate_signed_url.return_value = mock_signed_url
+        url = self.get_url('/urls/download/')
+        location = {
+            'service': 'cloud',
+            'container': 'albums',
+            'object': 'the-works',
+        }
+        signature, body = sign.build_hook_body(
+            sign.url_signer,
+            {'location': location},
+        )
+        resp = yield self.http_client.fetch(
+            url,
+            method='POST',
+            body=body,
+            headers={
+                'Content-Type': 'application/json',
+                'X-Signature': signature,
+            },
+        )
+        assert resp.code == 200
+        resp_data = json.loads(resp.body)
+        assert resp_data['url'] == mock_signed_url
+        mock_client.generate_signed_url.assert_called_with(
+            settings.DOWNLOAD_EXPIRATION_SECONDS,
+            method='GET',
+            container=location['container'],
+            obj=location['object']
+        )
+
+    @testing.gen_test
+    def test_get_download_url_invalid_location(self):
+        url = self.get_url('/urls/download/')
+        signature, body = sign.build_hook_body(
+            sign.url_signer,
+            {'location': {'service':  'cloud'}},
+        )
+        with pytest.raises(httpclient.HTTPError) as excinfo:
+            resp = yield self.http_client.fetch(
+                url,
+                method='POST',
+                body=body,
+                headers={
+                    'Content-Type': 'application/json',
+                    'X-Signature': signature,
+                },
+            )
+        assert excinfo.value.code == 400
 
 
 class TestUploadHandler(testing.AsyncHTTPTestCase):
@@ -178,6 +259,7 @@ class TestUploadHandler(testing.AsyncHTTPTestCase):
         length = 1024
         content_type = 'application/json'
         payload, message, signature = utils.make_signed_payload(
+            sign.upload_signer,
             size=length,
             type=content_type,
         )
@@ -198,6 +280,7 @@ class TestUploadHandler(testing.AsyncHTTPTestCase):
         length = 1024
         content_type = 'application/json'
         payload, message, signature = utils.make_signed_payload(
+            sign.upload_signer,
             size=length,
             type=content_type,
         )
@@ -210,7 +293,7 @@ class TestUploadHandler(testing.AsyncHTTPTestCase):
                     headers={'Content-Type': content_type},
                     body=utils.build_random_string(length),
                 )
-            assert excinfo.value.code == httplib.BAD_REQUEST
+            assert excinfo.value.code == 400
 
     @file_count_increment(0)
     @testing.gen_test
@@ -218,6 +301,7 @@ class TestUploadHandler(testing.AsyncHTTPTestCase):
         length = 1024
         content_type = 'application/json'
         payload, message, signature = utils.make_signed_payload(
+            sign.upload_signer,
             size=length,
             type=content_type,
         )
@@ -230,7 +314,7 @@ class TestUploadHandler(testing.AsyncHTTPTestCase):
                     headers={'Content-Type': content_type},
                     body=utils.build_random_string(length),
                 )
-            assert excinfo.value.code == httplib.CONFLICT
+            assert excinfo.value.code == 409
 
     @file_count_increment(0)
     @testing.gen_test
@@ -242,6 +326,7 @@ class TestUploadHandler(testing.AsyncHTTPTestCase):
         length = None
         content_type = 'application/json'
         payload, message, signature = utils.make_signed_payload(
+            sign.upload_signer,
             size=length,
             type=content_type,
         )
@@ -263,6 +348,7 @@ class TestUploadHandler(testing.AsyncHTTPTestCase):
         length = 1024
         content_type = 'application/json'
         payload, message, signature = utils.make_signed_payload(
+            sign.upload_signer,
             size=length,
             type=content_type,
         )

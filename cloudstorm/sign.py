@@ -44,22 +44,40 @@ def unserialize_payload(message):
     return order_recursive(payload)
 
 
-def sign(payload, key, digest):
-    message = serialize_payload(payload)
-    signature = hmac.new(
-        key=key,
-        msg=message,
-        digestmod=digest,
-    ).hexdigest()
-    return message, signature
+class Signer(object):
+
+    def __init__(self, secret, digest):
+        assert callable(digest)
+        self.secret = secret
+        self.digest = digest
+
+    def sign_message(self, message):
+        return hmac.new(
+            key=self.secret,
+            digestmod=self.digest,
+            msg=message,
+        ).hexdigest()
+
+    def sign_payload(self, payload):
+        message = serialize_payload(payload)
+        signature = self.sign_message(message)
+        return message, signature
+
+    def verify_message(self, signature, message):
+        expected = self.sign_message(message)
+        return signature == expected
+
+    def verify_payload(self, signature, payload):
+        _, expected = self.sign_payload(payload)
+        return signature == expected
 
 
-def verify(signature, payload, key, digest):
-    _, expected = sign(payload, key, digest)
-    return signature == expected
+url_signer = Signer(settings.URLS_HMAC_SECRET, settings.URLS_HMAC_DIGEST)
+upload_signer = Signer(settings.UPLOAD_HMAC_SECRET, settings.UPLOAD_HMAC_DIGEST)
+webhook_signer = Signer(settings.WEBHOOK_HMAC_SECRET, settings.WEBHOOK_HMAC_DIGEST)
 
 
-def build_upload_url(base_url, size, content_type, start_url, finish_url):
+def build_upload_url(signer, base_url, size, content_type, start_url, finish_url):
     payload = {
         'size': size,
         'type': content_type,
@@ -67,11 +85,7 @@ def build_upload_url(base_url, size, content_type, start_url, finish_url):
         'finishUrl': finish_url,
         'expires': time.time() + settings.UPLOAD_EXPIRATION_SECONDS,
     }
-    message, signature = sign(
-        payload,
-        settings.UPLOAD_HMAC_SECRET,
-        settings.UPLOAD_HMAC_DIGEST,
-    )
+    message, signature = signer.sign_payload(payload)
     url = furl.furl(settings.DOMAIN)
     url.port = settings.PORT
     url.path = base_url
@@ -82,17 +96,9 @@ def build_upload_url(base_url, size, content_type, start_url, finish_url):
     return url.url, payload
 
 
-def build_hook_body(payload):
-    _, signature = sign(
-        payload,
-        settings.WEBHOOK_HMAC_SECRET,
-        settings.WEBHOOK_HMAC_DIGEST,
-    )
-    body = {
-        'payload': payload,
-        'signature': signature,
-    }
-    return json.dumps(body)
+def build_hook_body(signer, payload):
+    _, signature = signer.sign_payload(payload)
+    return signature, json.dumps(payload)
 
 
 def get_argument_from_request(request, name, list_=False, default=None):
@@ -130,13 +136,7 @@ Verifiers = _Verifiers()
 
 @Verifiers.register
 def verify_signature(request, payload, signature):
-    valid_signature = verify(
-        signature,
-        payload,
-        settings.UPLOAD_HMAC_SECRET,
-        settings.UPLOAD_HMAC_DIGEST,
-    )
-    if not valid_signature:
+    if not upload_signer.verify_payload(signature, payload):
         raise errors.SignedUrlError('Invalid HMAC signature')
 
 
