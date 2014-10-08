@@ -120,7 +120,7 @@ class TestUploadUrlHandler(testing.AsyncHTTPTestCase):
             body=body,
             headers={
                 'Content-Type': 'application/json',
-                'X-Signature': signature,
+                settings.SIGNATURE_HEADER_KEY: signature,
             },
         )
         resp_data = json.loads(resp.body)
@@ -145,7 +145,7 @@ class TestUploadUrlHandler(testing.AsyncHTTPTestCase):
                 body=body,
                 headers={
                     'Content-Type': 'application/json',
-                    'X-Signature': signature,
+                    settings.SIGNATURE_HEADER_KEY: signature,
                 },
             )
         assert excinfo.value.code == 400
@@ -168,7 +168,7 @@ class TestUploadUrlHandler(testing.AsyncHTTPTestCase):
                 body=body,
                 headers={
                     'Content-Type': 'application/json',
-                    'X-Signature': signature,
+                    settings.SIGNATURE_HEADER_KEY: signature,
                 },
             )
         assert excinfo.value.code == 400
@@ -200,7 +200,7 @@ class TestDownloadUrlHandler(testing.AsyncHTTPTestCase):
             body=body,
             headers={
                 'Content-Type': 'application/json',
-                'X-Signature': signature,
+                settings.SIGNATURE_HEADER_KEY: signature,
             },
         )
         assert resp.code == 200
@@ -227,7 +227,7 @@ class TestDownloadUrlHandler(testing.AsyncHTTPTestCase):
                 body=body,
                 headers={
                     'Content-Type': 'application/json',
-                    'X-Signature': signature,
+                    settings.SIGNATURE_HEADER_KEY: signature,
                 },
             )
         assert excinfo.value.code == 400

@@ -71,7 +71,7 @@ def start_upload(url, signature):
             body=body,
             headers={
                 'Content-Type': 'application/json',
-                'X-Signature': signature,
+                settings.SIGNATURE_HEADER_KEY: signature,
             },
         )
         raise gen.Return(response)
@@ -117,7 +117,7 @@ def teardown_file(file_pointer, content_length, payload, signature):
             body=body,
             headers={
                 'Content-Type': 'application/json',
-                'X-Signature': signature,
+                settings.SIGNATURE_HEADER_KEY: signature,
             },
         )
         raise web.HTTPError(
@@ -145,7 +145,7 @@ def teardown_incomplete_file(file_pointer, payload, signature):
         body=body,
         headers={
             'Content-Type': 'application/json',
-            'X-Signature': signature,
+            settings.SIGNATURE_HEADER_KEY: signature,
         },
     )
 
@@ -188,7 +188,7 @@ upload_url_args = {
 
 
 hmac_args = {
-    'X-Signature': Arg(str, required=True, target='headers'),
+    settings.SIGNATURE_HEADER_KEY: Arg(str, required=True, target='headers'),
 }
 
 
@@ -198,7 +198,10 @@ def verify_signature(signer):
         def wrapped(self, *args, **kwargs):
             parsed = parser.parse(hmac_args, self.request)
             payload = json.loads(self.request.body)
-            valid = signer.verify_payload(parsed['X-Signature'], payload)
+            valid = signer.verify_payload(
+                parsed[settings.SIGNATURE_HEADER_KEY],
+                payload,
+            )
             if not valid:
                 raise web.HTTPError(
                     httplib.BAD_REQUEST,

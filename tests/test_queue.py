@@ -84,7 +84,7 @@ def check_upload_file_call(mock_container, temp_file):
 
 
 def check_hook_signature(request, payload):
-    signature = request.headers.get('X-Signature')
+    signature = request.headers.get(settings.SIGNATURE_HEADER_KEY)
     assert sign.upload_signer.verify_payload(signature, payload)
 
 

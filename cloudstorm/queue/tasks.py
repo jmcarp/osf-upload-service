@@ -97,7 +97,7 @@ def push_file_complete(response, payload, signature):
         data=body,
         headers={
             'Content-Type': 'application/json',
-            'X-Signature': signature,
+            settings.SIGNATURE_HEADER_KEY: signature,
         },
     )
 
@@ -125,7 +125,7 @@ def push_file_error(uuid, payload, signature):
         data=body,
         headers={
             'Content-Type': 'application/json',
-            'X-Signature': signature,
+            settings.SIGNATURE_HEADER_KEY: signature,
         },
     )
 
