@@ -2,6 +2,8 @@
 
 from invoke import task, run
 
+from cloudstorm import settings
+
 
 @task
 def install(upgrade=False):
@@ -27,4 +29,11 @@ def rabbitmq():
 def celery():
     cmd = 'celery worker -A cloudstorm.queue.tasks'
     run(cmd, pty=True)
+
+
+@task
+def tornado(port=None):
+    from cloudstorm import app
+    port = port or settings.PORT
+    app.main(port=port)
 

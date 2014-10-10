@@ -345,12 +345,12 @@ def make_app():
     )
 
 
-def main():
+def main(port):
     app = make_app()
-    app.listen(settings.PORT)
+    app.listen(port)
     IOLoop.current().start()
 
 
 if __name__ == '__main__':
-    main()
+    main(settings.PORT)
 
