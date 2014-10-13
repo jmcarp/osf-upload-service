@@ -26,6 +26,7 @@ from tests import utils
 
 TEST_FILE_PATH = '/tmp/test'
 START_UPLOAD_URL = 'http://localhost:5000/'
+PAYLOAD = {'extra': {'cheese': 'yes'}}
 SIGNATURE = 'hancock'
 
 
@@ -34,14 +35,14 @@ class TestStartUpload(testing.AsyncTestCase):
     @testing.gen_test
     def test_start_upload_success(self):
         with utils.StubFetch(app.http_client, 'PUT', status=httplib.CREATED):
-            resp = yield app.start_upload(START_UPLOAD_URL, SIGNATURE)
+            resp = yield app.start_upload(START_UPLOAD_URL, SIGNATURE, PAYLOAD)
         assert resp.code == 201
 
     @testing.gen_test
     def test_start_upload_error(self):
         with utils.StubFetch(app.http_client, 'PUT', status=httplib.CONFLICT):
             with pytest.raises(web.HTTPError) as excinfo:
-                resp = yield app.start_upload(START_UPLOAD_URL, SIGNATURE)
+                resp = yield app.start_upload(START_UPLOAD_URL, SIGNATURE, PAYLOAD)
             assert excinfo.value.status_code == 409
 
 
@@ -112,6 +113,42 @@ class TestUploadUrlHandler(testing.AsyncHTTPTestCase):
                 'type': self.content_type,
                 'startUrl': self.start_url,
                 'finishUrl': self.finish_url,
+            },
+        )
+        resp = yield self.http_client.fetch(
+            self.get_url('/urls/upload/'),
+            method='POST',
+            body=body,
+            headers={
+                'Content-Type': 'application/json',
+                settings.SIGNATURE_HEADER_KEY: signature,
+            },
+        )
+        resp_data = json.loads(resp.body)
+        assert resp_data['status'] == 'success'
+        assert resp_data['url'] == url
+
+    @mock.patch('time.time')
+    @testing.gen_test
+    def test_create_upload_url_extra_params(self, mock_time):
+        mock_time.return_value = 15
+        url, _ = sign.build_upload_url(
+            sign.upload_signer,
+            '/files/',
+            self.size,
+            self.content_type,
+            self.start_url,
+            self.finish_url,
+            extra={'user': 'freddie'},
+        )
+        signature, body = sign.build_hook_body(
+            sign.url_signer,
+            {
+                'size': self.size,
+                'type': self.content_type,
+                'startUrl': self.start_url,
+                'finishUrl': self.finish_url,
+                'extra': {'user': 'freddie'},
             },
         )
         resp = yield self.http_client.fetch(

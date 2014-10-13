@@ -52,17 +52,21 @@ def verify_upload(request):
 
 
 @gen.coroutine
-def start_upload(url, signature):
+def start_upload(url, signature, payload):
     """Notify metadata application that file upload has started. Catch and
     reraise errors.
 
     :param str url: Webhook start URL
     :param str signature: Signature from signed URL
+    :param dict payload: Payload from signed URL
     :raise: `web.HTTPError` if error received from application
     """
     signature, body = sign.build_hook_body(
         sign.webhook_signer,
-        {'uploadSignature': signature},
+        {
+            'uploadSignature': signature,
+            'uploadPayload': payload,
+        },
     )
     try:
         response = yield http_client.fetch(
@@ -184,6 +188,7 @@ upload_url_args = {
     'type': Arg(unicode),
     'startUrl': Arg(unicode, required=True, validate=validate_url),
     'finishUrl': Arg(unicode, required=True, validate=validate_url),
+    'extra': Arg()
 }
 
 
@@ -228,6 +233,7 @@ class UploadUrlHandler(web.RequestHandler):
             args['type'],
             args['startUrl'],
             args['finishUrl'],
+            args['extra'],
         )
         self.write({
             'status': 'success',
@@ -283,7 +289,7 @@ class UploadHandler(web.RequestHandler):
         """
         self.setup()
         self.payload, self.signature = verify_upload(self.request)
-        yield start_upload(self.payload['startUrl'], self.signature)
+        yield start_upload(self.payload['startUrl'], self.signature, self.payload)
         self.file_path = build_file_path(self.request, self.payload)
         self.file_pointer = open(self.file_path, 'wb')
         content_length_text = int_or_none(
