@@ -3,6 +3,8 @@
 import abc
 import six
 
+from . import errors
+
 
 SIGNED_URL_METHODS = ['GET', 'PUT']
 
@@ -48,12 +50,24 @@ class BaseContainer(SignedUrlBase):
         pass
 
     @abc.abstractmethod
-    def get_object(self, container, obj):
+    def get_object(self, obj):
         pass
 
     @abc.abstractmethod
     def upload_file(self, fobj, name):
         pass
+
+    def get_or_upload(self, fobj, name):
+        try:
+            return self.get_object(name)
+        except errors.NotFound:
+            return self.upload_file(fobj, name)
+
+    def __repr__(self):
+        return '<{klass}: {name}>'.format(
+            klass=self.__class__.__name__,
+            name=self.name,
+        )
 
 
 class BaseObject(SignedUrlBase):
@@ -88,3 +102,8 @@ class BaseObject(SignedUrlBase):
     def delete(self):
         pass
 
+    def __repr__(self):
+        return '<{klass}: {name}>'.format(
+            klass=self.__class__.__name__,
+            name=self.name,
+        )

@@ -115,4 +115,3 @@ class S3Object(core.BaseObject):
             method,
             self.name,
         )
-
