@@ -57,7 +57,7 @@ class BaseContainer(SignedUrlBase):
     def upload_file(self, fobj, name):
         pass
 
-    def get_or_upload(self, fobj, name):
+    def get_or_upload_file(self, fobj, name):
         try:
             return self.get_object(name)
         except errors.NotFound:

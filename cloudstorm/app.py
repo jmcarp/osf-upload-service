@@ -188,7 +188,7 @@ upload_url_args = {
     'type': Arg(unicode),
     'startUrl': Arg(unicode, required=True, validate=validate_url),
     'finishUrl': Arg(unicode, required=True, validate=validate_url),
-    'extra': Arg()
+    'extra': Arg(),
 }
 
 

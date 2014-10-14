@@ -34,13 +34,17 @@ def get_hash(file_pointer, chunk_size, hash_function):
     return result.hexdigest()
 
 
-def get_metadata(file_object):
-    """Format metadata from backend file object.
+def serialize_object(file_object):
+    """Serialize representation of file object for webhook payload.
+    :param file_object: File object from storage backend
     """
     return {
-        'size': file_object.size,
-        'date_modified': file_object.date_modified.isoformat(),
-        'content_type': file_object.content_type,
+        'location': file_object.location,
+        'metadata': {
+            'size': file_object.size,
+            'date_modified': file_object.date_modified.isoformat(),
+            'content_type': file_object.content_type,
+        },
     }
 
 
@@ -59,7 +63,7 @@ def push_file_main(file_path):
         file_pointer.seek(0)
         try:
             container = storage.container_proxy.get()
-            obj = container.upload_file(file_pointer, hash_str)
+            obj = container.get_or_upload_file(file_pointer, hash_str)
         except Exception as error:
             try_count = push_file_main.request.retries + 1
             backoff = settings.UPLOAD_RETRY_BACKOFF * try_count
@@ -69,10 +73,7 @@ def push_file_main(file_path):
                 countdown=countdown,
                 max_retries=settings.UPLOAD_RETRY_ATTEMPTS,
             )
-    return {
-        'location': obj.location,
-        'metadata': get_metadata(obj),
-    }
+    return serialize_object(obj)
 
 
 @app.task
@@ -143,4 +144,3 @@ def push_file(payload, signature, file_path):
         link=push_file_complete.s(payload=payload, signature=signature),
         link_error=push_file_error.s(payload=payload, signature=signature),
     )
-

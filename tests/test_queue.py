@@ -77,8 +77,8 @@ def check_upload_file_call(mock_container, temp_file):
         settings.UPLOAD_HASH_CHUNK_SIZE,
         settings.UPLOAD_PRIMARY_HASH,
     )
-    assert mock_container.upload_file.called
-    call = mock_container.upload_file.call_args_list[0]
+    assert mock_container.get_or_upload_file.called
+    call = mock_container.get_or_upload_file.call_args_list[0]
     assert call[0][0].name == temp_file.name
     assert call[0][1] == hash_str
 
@@ -131,7 +131,7 @@ def test_push_file_error(mock_finish_url, monkeypatch):
 
 @pytest.mark.httpretty
 def test_push_file_integration_success(temp_file, mock_container, mock_finish_url, mock_file_object):
-    mock_container.upload_file.return_value = mock_file_object
+    mock_container.get_or_upload_file.return_value = mock_file_object
     result = tasks.push_file(payload, signature, temp_file.name).get()
     check_upload_file_call(mock_container, temp_file)
     # Success callback sends correct hook payload
@@ -146,7 +146,7 @@ def test_push_file_integration_success(temp_file, mock_container, mock_finish_ur
 def test_push_file_integration_error(temp_file, mock_container, mock_finish_url, monkeypatch):
     # Mock `AsyncResult` to handle error retrieval
     error = TypeError('not my type')
-    mock_container.upload_file.side_effect = error
+    mock_container.get_or_upload_file.side_effect = error
     monkeypatch.setattr(AsyncResult, 'result', error)
     container = tasks.push_file(payload, signature, temp_file.name)
     # Task chain returns error raised during primary task
@@ -154,7 +154,7 @@ def test_push_file_integration_error(temp_file, mock_container, mock_finish_url,
     assert result == error
     # Primary task is retried the right number of times
     expected_tries = settings.UPLOAD_RETRY_ATTEMPTS + 1
-    assert mock_container.upload_file.call_count == expected_tries
+    assert mock_container.get_or_upload_file.call_count == expected_tries
     # Error callback sends correct hook payload
     request = httpretty.last_request()
     request_body = json.loads(request.body)
@@ -162,4 +162,3 @@ def test_push_file_integration_error(temp_file, mock_container, mock_finish_url,
     assert request_body['status'] == 'error'
     assert 'not my type' in request_body['reason']
     assert request_body['uploadSignature'] == signature
-
