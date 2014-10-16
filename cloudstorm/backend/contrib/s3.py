@@ -1,4 +1,5 @@
-# -*- coding: utf-8 -*-
+#!/usr/bin/env python
+# encoding: utf-8
 
 from dateutil.parser import parse as parse_date
 
@@ -21,12 +22,19 @@ class S3Client(core.BaseClient):
         _s3_bucket = self.connection.create_bucket(container)
         return S3Container(_s3_bucket, self)
 
-    def _generate_signed_url(self, seconds, method, container, obj):
+    def _generate_signed_url(self, seconds, method, container, obj, filename=None):
+        # Set Content-Disposition header if filename is provided
+        if filename is not None:
+            disposition = u'attachment; filename={}'.format(filename)
+            response_headers = {'response-content-disposition': disposition}
+        else:
+            response_headers = None
         return self.connection.generate_url(
             expires_in=seconds,
             method=method,
             bucket=container,
             key=obj,
+            response_headers=response_headers,
         )
 
 
@@ -64,12 +72,13 @@ class S3Container(core.BaseContainer):
         _s3_key.set_contents_from_file(fobj)
         return S3Object(_s3_key, self)
 
-    def _generate_signed_url(self, seconds, method, obj):
+    def _generate_signed_url(self, seconds, method, obj, filename=None):
         return self._client.generate_signed_url(
             seconds,
             method,
             self.name,
             obj,
+            filename=filename,
         )
 
 
@@ -109,9 +118,10 @@ class S3Object(core.BaseObject):
     def delete(self):
         self._s3_key.delete()
 
-    def _generate_signed_url(self, seconds, method):
+    def _generate_signed_url(self, seconds, method, filename=None):
         return self._container.generate_signed_url(
             seconds,
             method,
             self.name,
+            filename=filename,
         )

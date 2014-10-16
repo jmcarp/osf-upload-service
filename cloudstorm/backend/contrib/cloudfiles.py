@@ -1,7 +1,9 @@
-# -*- coding: utf-8 -*-
+#!/usr/bin/env python
+# encoding: utf-8
 
 import functools
 
+import furl
 from dateutil.parser import parse as parse_date
 
 import pyrax
@@ -20,6 +22,23 @@ def ensure_connection(func):
             self.connect()
         return func(self, *args, **kwargs)
     return wrapped
+
+
+# TODO: Patch Pyrax to include this functionality
+def add_name_to_url(url, filename=None):
+    """Optionally add a filename to the query string of a URL.
+    Note: Cloudfiles allows `filename` as an optional query parameter on signed
+    GET requests; if provided, the filename overrides the default filename in
+    the `Content-Disposition` header.
+
+    :param str url: Base URL
+    :param str filename: Optional filename
+    """
+    if filename is None:
+        return url
+    parsed = furl.furl(url)
+    parsed.args['filename'] = filename
+    return parsed.url
 
 
 class CloudFilesClient(core.BaseClient):
@@ -54,8 +73,9 @@ class CloudFilesClient(core.BaseClient):
         return CloudFilesContainer(_pyrax_container, self)
 
     @ensure_connection
-    def _generate_signed_url(self, seconds, method, container, obj):
-        return self.connection.get_temp_url(container, obj, seconds, method)
+    def _generate_signed_url(self, seconds, method, container, obj, filename=None):
+        url = self.connection.get_temp_url(container, obj, seconds, method)
+        return add_name_to_url(url, filename)
 
 
 class CloudFilesContainer(core.BaseContainer):
@@ -92,8 +112,9 @@ class CloudFilesContainer(core.BaseContainer):
         )
         return CloudFilesObject(_pyrax_object, self)
 
-    def _generate_signed_url(self, seconds, method, obj):
-        return self._pyrax_container.get_temp_url(obj, seconds, method)
+    def _generate_signed_url(self, seconds, method, obj, filename=None):
+        url = self._pyrax_container.get_temp_url(obj, seconds, method)
+        return add_name_to_url(url, filename)
 
 
 class CloudFilesObject(core.BaseObject):
@@ -132,6 +153,6 @@ class CloudFilesObject(core.BaseObject):
     def delete(self):
         self._pyrax_object.delete()
 
-    def _generate_signed_url(self, seconds, method):
-        return self._pyrax_object.get_temp_url(seconds, method)
-
+    def _generate_signed_url(self, seconds, method, filename=None):
+        url = self._pyrax_object.get_temp_url(seconds, method)
+        return add_name_to_url(url, filename)

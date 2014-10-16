@@ -1,4 +1,5 @@
-# -*- coding: utf-8 -*-
+#!/usr/bin/env python
+# encoding: utf-8
 
 import hashlib
 
@@ -44,4 +45,3 @@ UPLOAD_RETRY_BACKOFF = 1
 BROKER_URL = 'amqp://'
 CELERY_RESULT_BACKEND = 'amqp://'
 CELERY_IMPORTS = 'cloudstorm.queue.tasks'
-
