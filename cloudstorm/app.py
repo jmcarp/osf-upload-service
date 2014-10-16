@@ -1,4 +1,5 @@
-# -*- coding: utf-8 -*-
+#!/usr/bin/env python
+# encoding: utf-8
 
 import os
 import json
@@ -247,16 +248,18 @@ def validate_location(value):
 
 download_url_args = {
     'location': Arg(dict, required=True, validate=validate_location),
+    'filename': Arg(str, default=None),
 }
 
 
-def get_download_url(location):
+def get_download_url(location, filename=None):
     client = storage.client_proxy.get()
     return client.generate_signed_url(
         settings.DOWNLOAD_EXPIRATION_SECONDS,
         method='GET',
         container=location['container'],
         obj=location['object'],
+        filename=filename,
     )
 
 
@@ -265,7 +268,7 @@ class DownloadUrlHandler(web.RequestHandler):
     @verify_signature_urls
     def post(self):
         args = parser.parse(download_url_args, self.request, targets=('json',))
-        url = get_download_url(args['location'])
+        url = get_download_url(**args)
         self.write({'url': url})
 
 

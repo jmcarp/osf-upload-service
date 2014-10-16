@@ -1,4 +1,5 @@
-# -*- coding: utf-8 -*-
+#!/usr/bin/env python
+# encoding: utf-8
 
 import mock
 import pytest
@@ -213,23 +214,29 @@ class TestUploadUrlHandler(testing.AsyncHTTPTestCase):
 
 class TestDownloadUrlHandler(testing.AsyncHTTPTestCase):
 
+    def setUp(self):
+        super(TestDownloadUrlHandler, self).setUp()
+        self.location = {
+            'service': 'cloud',
+            'container': 'albums',
+            'object': 'the-works',
+        }
+
     def get_app(self):
         return app.make_app()
 
     @mock.patch('cloudstorm.app.storage.client_proxy._result')
     @testing.gen_test
-    def test_get_download_url(self, mock_client):
+    def test_get_download_url_with_filename(self, mock_client):
         mock_signed_url = 'http://secret.com/'
         mock_client.generate_signed_url.return_value = mock_signed_url
         url = self.get_url('/urls/download/')
-        location = {
-            'service': 'cloud',
-            'container': 'albums',
-            'object': 'the-works',
-        }
         signature, body = sign.build_hook_body(
             sign.url_signer,
-            {'location': location},
+            {
+                'location': self.location,
+                'filename': 'the-miracle.mp3',
+            },
         )
         resp = yield self.http_client.fetch(
             url,
@@ -246,8 +253,39 @@ class TestDownloadUrlHandler(testing.AsyncHTTPTestCase):
         mock_client.generate_signed_url.assert_called_with(
             settings.DOWNLOAD_EXPIRATION_SECONDS,
             method='GET',
-            container=location['container'],
-            obj=location['object']
+            container=self.location['container'],
+            obj=self.location['object'],
+            filename='the-miracle.mp3',
+        )
+
+    @mock.patch('cloudstorm.app.storage.client_proxy._result')
+    @testing.gen_test
+    def test_get_download_url_without_filename(self, mock_client):
+        mock_signed_url = 'http://secret.com/'
+        mock_client.generate_signed_url.return_value = mock_signed_url
+        url = self.get_url('/urls/download/')
+        signature, body = sign.build_hook_body(
+            sign.url_signer,
+            {'location': self.location},
+        )
+        resp = yield self.http_client.fetch(
+            url,
+            method='POST',
+            body=body,
+            headers={
+                'Content-Type': 'application/json',
+                settings.SIGNATURE_HEADER_KEY: signature,
+            },
+        )
+        assert resp.code == 200
+        resp_data = json.loads(resp.body)
+        assert resp_data['url'] == mock_signed_url
+        mock_client.generate_signed_url.assert_called_with(
+            settings.DOWNLOAD_EXPIRATION_SECONDS,
+            method='GET',
+            container=self.location['container'],
+            obj=self.location['object'],
+            filename=None,
         )
 
     @testing.gen_test
