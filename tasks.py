@@ -5,15 +5,8 @@ import sys
 
 from invoke import task, run
 
+from cloudstorm.queue import app
 from cloudstorm import settings
-
-
-def get_bin_path():
-    return os.path.dirname(sys.executable)
-
-
-def bin_prefix(path):
-    return os.path.join(get_bin_path(), path)
 
 
 @task
@@ -38,8 +31,7 @@ def rabbitmq():
 
 @task
 def celery():
-    cmd = 'celery worker -A cloudstorm.queue.tasks'
-    run(bin_prefix(cmd), pty=True)
+    app.worker_main(['worker'])
 
 
 @task
