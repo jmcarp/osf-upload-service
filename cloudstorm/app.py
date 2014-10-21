@@ -248,7 +248,7 @@ def validate_location(value):
 
 download_url_args = {
     'location': Arg(dict, required=True, validate=validate_location),
-    'filename': Arg(str, default=None),
+    'filename': Arg(unicode, default=None),
 }
 
 

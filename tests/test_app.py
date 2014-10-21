@@ -225,6 +225,19 @@ class TestDownloadUrlHandler(testing.AsyncHTTPTestCase):
     def get_app(self):
         return app.make_app()
 
+    def check_mock_client(self, mock_client, filename, **kwargs):
+        expected = dict(
+            method='GET',
+            container=self.location['container'],
+            obj=self.location['object'],
+            filename=filename,
+        )
+        expected.update(kwargs)
+        mock_client.generate_signed_url.assert_called_with(
+            settings.DOWNLOAD_EXPIRATION_SECONDS,
+            **expected
+        )
+
     @mock.patch('cloudstorm.app.storage.client_proxy._result')
     @testing.gen_test
     def test_get_download_url_with_filename(self, mock_client):
@@ -250,13 +263,34 @@ class TestDownloadUrlHandler(testing.AsyncHTTPTestCase):
         assert resp.code == 200
         resp_data = json.loads(resp.body)
         assert resp_data['url'] == mock_signed_url
-        mock_client.generate_signed_url.assert_called_with(
-            settings.DOWNLOAD_EXPIRATION_SECONDS,
-            method='GET',
-            container=self.location['container'],
-            obj=self.location['object'],
-            filename='the-miracle.mp3',
+        self.check_mock_client(mock_client, filename=u'the-miracle.mp3')
+
+    @mock.patch('cloudstorm.app.storage.client_proxy._result')
+    @testing.gen_test
+    def test_get_download_url_with_unicode_filename(self, mock_client):
+        mock_signed_url = 'http://secret.com/'
+        mock_client.generate_signed_url.return_value = mock_signed_url
+        url = self.get_url('/urls/download/')
+        signature, body = sign.build_hook_body(
+            sign.url_signer,
+            {
+                'location': self.location,
+                'filename': u'killer-qüeen.mp3',
+            },
         )
+        resp = yield self.http_client.fetch(
+            url,
+            method='POST',
+            body=body,
+            headers={
+                'Content-Type': 'application/json',
+                settings.SIGNATURE_HEADER_KEY: signature,
+            },
+        )
+        assert resp.code == 200
+        resp_data = json.loads(resp.body)
+        assert resp_data['url'] == mock_signed_url
+        self.check_mock_client(mock_client, filename=u'killer-qüeen.mp3')
 
     @mock.patch('cloudstorm.app.storage.client_proxy._result')
     @testing.gen_test
@@ -280,13 +314,7 @@ class TestDownloadUrlHandler(testing.AsyncHTTPTestCase):
         assert resp.code == 200
         resp_data = json.loads(resp.body)
         assert resp_data['url'] == mock_signed_url
-        mock_client.generate_signed_url.assert_called_with(
-            settings.DOWNLOAD_EXPIRATION_SECONDS,
-            method='GET',
-            container=self.location['container'],
-            obj=self.location['object'],
-            filename=None,
-        )
+        self.check_mock_client(mock_client, filename=None)
 
     @testing.gen_test
     def test_get_download_url_invalid_location(self):
