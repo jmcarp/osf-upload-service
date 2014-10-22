@@ -29,7 +29,7 @@ def order_recursive(data):
     if isinstance(data, list):
         return [
             order_recursive(value)
-            for value in list
+            for value in data
         ]
     return data
 

@@ -28,7 +28,7 @@ def test_order_recursive():
         'a': 1,
         'b': {
             'd': 2,
-            'c': 3,
+            'c': [3, 4],
         }
     }
     ordered = sign.order_recursive(unordered)
