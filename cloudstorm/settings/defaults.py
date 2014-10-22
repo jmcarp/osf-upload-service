@@ -6,7 +6,8 @@ import hashlib
 from cloudstorm.backend import contrib
 
 
-DOMAIN = 'http://localhost/'
+SCHEME = 'http'
+DOMAIN = 'localhost'
 PORT = 7777
 
 UPLOAD_EXPIRATION_SECONDS = 15

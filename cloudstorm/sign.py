@@ -88,7 +88,9 @@ def build_upload_url(signer, base_url, size, content_type, start_url, finish_url
         'extra': extra,
     }
     message, signature = signer.sign_payload(payload)
-    url = furl.furl(settings.DOMAIN)
+    url = furl.furl()
+    url.scheme = settings.SCHEME
+    url.host = settings.DOMAIN
     url.port = settings.PORT
     url.path = base_url
     url.args.update(dict(

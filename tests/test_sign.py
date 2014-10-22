@@ -90,7 +90,9 @@ def test_build_upload_url(monkeypatch):
         'http://localhost:5000/finish/',
     )
     message, signature = sign.upload_signer.sign_payload(payload)
-    expected_url = furl.furl(settings.DOMAIN)
+    expected_url = furl.furl()
+    expected_url.scheme = settings.SCHEME
+    expected_url.host = settings.DOMAIN
     expected_url.port = settings.PORT
     expected_url.path = '/files/'
     expected_url.args.update({
