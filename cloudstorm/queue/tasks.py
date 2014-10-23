@@ -85,7 +85,7 @@ def push_file_main(self, file_path):
     return serialize_object(obj)
 
 
-@app.task(bind=True)
+@app.task(bind=True, ignore_result=True)
 def push_file_complete(self, response, payload, signature):
     """Completion callback for `push_file_main`.
 
@@ -113,7 +113,7 @@ def push_file_complete(self, response, payload, signature):
         )
 
 
-@app.task(bind=True)
+@app.task(bind=True, ignore_result=True)
 def push_file_error(self, uuid, payload, signature):
     """Error callback for `push_file_main`.
 
