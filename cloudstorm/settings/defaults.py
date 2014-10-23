@@ -44,5 +44,4 @@ UPLOAD_RETRY_BACKOFF = 1
 
 # Celery settings
 BROKER_URL = 'amqp://'
-CELERY_RESULT_BACKEND = 'amqp://'
 CELERY_IMPORTS = 'cloudstorm.queue.tasks'
