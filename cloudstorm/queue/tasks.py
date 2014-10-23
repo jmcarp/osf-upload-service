@@ -1,6 +1,8 @@
-# -*- coding: utf-8 -*-
+#!/usr/bin/env python
+# encoding: utf-8
 
 import hashlib
+import contextlib
 
 import requests
 from celery.result import AsyncResult
@@ -48,8 +50,23 @@ def serialize_object(file_object):
     }
 
 
-@app.task
-def push_file_main(file_path):
+@contextlib.contextmanager
+def RetryTask(task, error_types=(Exception,)):
+    try:
+        yield
+    except error_types as exc_value:
+        try_count = task.request.retries + 1
+        backoff = settings.UPLOAD_RETRY_BACKOFF * try_count
+        countdown = 1#settings.UPLOAD_RETRY_DELAY * backoff
+        raise task.retry(
+            exc=exc_value,
+            countdown=countdown,
+            max_retries=settings.UPLOAD_RETRY_ATTEMPTS,
+        )
+
+
+@app.task(bind=True)
+def push_file_main(self, file_path):
     """Push file to storage backend, retrying on failure.
 
     :param str file_path: Path to file on disk
@@ -61,23 +78,15 @@ def push_file_main(file_path):
             settings.UPLOAD_PRIMARY_HASH,
         )
         file_pointer.seek(0)
-        try:
+        with RetryTask(self):
             container = storage.container_proxy.get()
             obj = container.get_or_upload_file(file_pointer, hash_str)
-        except Exception as error:
-            try_count = push_file_main.request.retries + 1
-            backoff = settings.UPLOAD_RETRY_BACKOFF * try_count
-            countdown = settings.UPLOAD_RETRY_DELAY * backoff
-            raise push_file_main.retry(
-                exc=error,
-                countdown=countdown,
-                max_retries=settings.UPLOAD_RETRY_ATTEMPTS,
-            )
+
     return serialize_object(obj)
 
 
-@app.task
-def push_file_complete(response, payload, signature):
+@app.task(bind=True)
+def push_file_complete(self, response, payload, signature):
     """Completion callback for `push_file_main`.
 
     :param response: Object data returned by `push_file_main`
@@ -93,18 +102,19 @@ def push_file_complete(response, payload, signature):
             'metadata': response['metadata'],
         },
     )
-    return requests.put(
-        payload['finishUrl'],
-        data=body,
-        headers={
-            'Content-Type': 'application/json',
-            settings.SIGNATURE_HEADER_KEY: signature,
-        },
-    )
+    with RetryTask(self):
+        return requests.put(
+            payload['finishUrl'],
+            data=body,
+            headers={
+                'Content-Type': 'application/json',
+                settings.SIGNATURE_HEADER_KEY: signature,
+            },
+        )
 
 
-@app.task
-def push_file_error(uuid, payload, signature):
+@app.task(bind=True)
+def push_file_error(self, uuid, payload, signature):
     """Error callback for `push_file_main`.
 
     :param str uuid: UUID of Celery error result
@@ -117,18 +127,19 @@ def push_file_error(uuid, payload, signature):
         sign.webhook_signer,
         {
             'status': 'error',
-            'reason': 'Upload to backend failed: {0}'.format(error.message),
+            'reason': 'Upload to backend failed: {0}'.format(error),
             'uploadSignature': signature,
         },
     )
-    return requests.put(
-        payload['finishUrl'],
-        data=body,
-        headers={
-            'Content-Type': 'application/json',
-            settings.SIGNATURE_HEADER_KEY: signature,
-        },
-    )
+    with RetryTask(self):
+        return requests.put(
+            payload['finishUrl'],
+            data=body,
+            headers={
+                'Content-Type': 'application/json',
+                settings.SIGNATURE_HEADER_KEY: signature,
+            },
+        )
 
 
 def push_file(payload, signature, file_path):

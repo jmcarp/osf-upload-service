@@ -21,6 +21,7 @@ from cloudstorm import settings
 
 # Run Celery tasks synchronously for testing
 settings.CELERY_ALWAYS_EAGER = True
+# settings.CELERY_EAGER_PROPAGATES_EXCEPTIONS = False
 from cloudstorm.queue import tasks
 from cloudstorm import storage
 
@@ -102,6 +103,15 @@ def test_push_file_main(temp_file, mock_container, monkeypatch):
     check_upload_file_call(mock_container, temp_file)
 
 
+def test_push_file_main_error_retry(temp_file, mock_container):
+    # Mock `AsyncResult` to handle error retrieval
+    error = TypeError('not my type')
+    mock_container.get_or_upload_file.side_effect = error
+    container = tasks.push_file_main.apply_async((temp_file.name,))
+    expected_tries = settings.UPLOAD_RETRY_ATTEMPTS + 1
+    assert mock_container.get_or_upload_file.call_count == expected_tries
+
+
 @pytest.mark.httpretty
 def test_push_file_complete(mock_finish_url):
     response = {
@@ -114,6 +124,18 @@ def test_push_file_complete(mock_finish_url):
     check_hook_signature(resp.request, request_body)
     assert request_body['status'] == 'success'
     assert request_body['uploadSignature'] == signature
+
+
+@mock.patch('cloudstorm.queue.tasks.requests')
+def test_push_file_complete_error_retry(mock_requests):
+    mock_requests.put.side_effect = Exception
+    response = {
+        'location': {'service': 'cloud'},
+        'metadata': {'size': 1024},
+    }
+    resp = tasks.push_file_complete.apply_async((response, payload, signature))
+    expected_tries = settings.UPLOAD_RETRY_ATTEMPTS + 1
+    assert mock_requests.put.call_count == expected_tries
 
 
 @pytest.mark.httpretty
@@ -130,6 +152,16 @@ def test_push_file_error(mock_finish_url, monkeypatch):
     assert request_body['uploadSignature'] == signature
 
 
+@mock.patch('cloudstorm.queue.tasks.requests')
+def test_push_file_error_retry(mock_requests, monkeypatch):
+    error = Exception('disaster')
+    monkeypatch.setattr(AsyncResult, 'result', error)
+    mock_requests.put.side_effect = Exception
+    resp = tasks.push_file_error.apply_async((None, payload, signature))
+    expected_tries = settings.UPLOAD_RETRY_ATTEMPTS + 1
+    assert mock_requests.put.call_count == expected_tries
+
+
 @pytest.mark.httpretty
 def test_push_file_integration_success(temp_file, mock_container, mock_finish_url, mock_file_object):
     mock_container.get_or_upload_file.return_value = mock_file_object
@@ -144,7 +176,7 @@ def test_push_file_integration_success(temp_file, mock_container, mock_finish_ur
 
 
 @pytest.mark.httpretty
-def test_push_file_integration_error(temp_file, mock_container, mock_finish_url, monkeypatch):
+def test_push_file_integration_push_error(temp_file, mock_container, mock_finish_url, monkeypatch):
     # Mock `AsyncResult` to handle error retrieval
     error = TypeError('not my type')
     mock_container.get_or_upload_file.side_effect = error
