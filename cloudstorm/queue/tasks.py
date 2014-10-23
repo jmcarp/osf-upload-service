@@ -14,7 +14,7 @@ from cloudstorm.queue import app
 
 
 def iter_chunks(file_pointer, chunk_size):
-    """Iterate over chunks of a file.
+    """Iterate over chunks of a file. Borrowed from @chrisseto.
     """
     while True:
         chunk = file_pointer.read(chunk_size)
@@ -24,7 +24,7 @@ def iter_chunks(file_pointer, chunk_size):
 
 
 def get_hash(file_pointer, chunk_size, hash_function):
-    """Iteratively compute hash of file contents.
+    """Iteratively compute hash of file contents. Borrowed from @chrisseto.
 
     :param file file_pointer: File to hash
     :param int chunk_size: Bytes to read per iteration
