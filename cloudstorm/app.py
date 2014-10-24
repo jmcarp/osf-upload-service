@@ -35,6 +35,12 @@ CORS_ACCEPT_HEADERS = [
 ]
 
 
+MESSAGES = {
+    'INVALID_LENGTH': 'Unexpected content length',
+    'INTERRUPTED': 'Connection interrupted',
+}
+
+
 def verify_upload(request):
     """Verify signed URL and upload request.
 
@@ -86,63 +92,43 @@ def start_upload(url, signature, payload):
         raise web.HTTPError(error.code)
 
 
-def close_file(file_pointer):
-    """Ensure that file is closed, passing silently if `file_pointer` is not a
-    file.
+def verify_file_size(file_pointer, content_length):
+    """Verify that file has expected content length.
 
-    :param file file_pointer: File pointer or `None`
+    :param file file_pointer: File object
+    :param int content_length: Expected length
+    :return: File has expected length
     """
+    if file_pointer is None:
+        return False
+    file_pointer.seek(0, os.SEEK_END)
+    size = file_pointer.tell()
+    return size == content_length
+
+
+def delete_file(file_pointer):
     try:
-        file_pointer.close()
-    except AttributeError:
+        os.remove(file_pointer.name)
+    except (AttributeError, OSError):
         pass
 
 
-def teardown_file(file_pointer, content_length, payload, signature):
-    """
-    :raise: `web.HTTPError` if file has incorrect size
-    """
-    file_pointer.seek(0, os.SEEK_END)
-    size = file_pointer.tell()
-    close_file(file_pointer)
-    if size != content_length:
-        logger.error('Unexpected content length. Aborting upload.')
-        os.remove(file_pointer.name)
-        signature, body = sign.build_hook_body(
-            sign.webhook_signer,
-            {
-                'status': 'error',
-                'reason': 'Uploaded file has incorrect size',
-                'uploadSignature': signature,
-            },
-        )
-        http_client.fetch(
-            payload['finishUrl'],
-            method='PUT',
-            body=body,
-            headers={
-                'Content-Type': 'application/json',
-                settings.SIGNATURE_HEADER_KEY: signature,
-            },
-        )
-        raise web.HTTPError(
-            httplib.BAD_REQUEST,
-            reason='Unexpected content size',
-        )
+def send_fail_hook(payload, signature, reasons=None):
+    """Notify calling application that upload has failed.
 
-
-def teardown_incomplete_file(file_pointer, payload, signature):
+    :param dict payload:
+    :param str signature:
+    :param list reasons: Error messages
     """
-    """
-    logger.error('Client disconnected. Aborting upload.')
-    os.remove(file_pointer.name)
+    reasons = reasons or []
+    reason = '; '.join(reasons)
     signature, body = sign.build_hook_body(
         sign.webhook_signer,
         {
             'status': 'error',
-            'reason': 'Connection terminated',
+            'reason': reason,
             'uploadSignature': signature,
-        }
+        },
     )
     http_client.fetch(
         payload['finishUrl'],
@@ -155,7 +141,6 @@ def teardown_incomplete_file(file_pointer, payload, signature):
     )
 
 
-# TODO: Is UUID adequate here?
 def build_file_path(request, payload):
     """Build path to save a cached file.
     """
@@ -283,6 +268,7 @@ class UploadHandler(web.RequestHandler):
         self.content_length = int_or_none(
             self.request.headers.get('Content-Length')
         )
+        self.errors = []
 
     @utils.allow_methods(['put'])
     @gen.coroutine
@@ -318,29 +304,35 @@ class UploadHandler(web.RequestHandler):
     def put(self):
         """After file is uploaded, push to backend via Celery.
         """
+        if not verify_file_size(self.file_pointer, self.content_length):
+            self.errors.append(MESSAGES['INVALID_LENGTH'])
+            raise web.HTTPError(
+                httplib.BAD_REQUEST,
+                reason=MESSAGES['INVALID_LENGTH'],
+            )
+        self.file_pointer.close()
         tasks.push_file(self.payload, self.signature, self.file_path)
         self.write({'status': 'success'})
 
+    def teardown(self):
+        """If any errors logged, notify calling application and clear
+        temporary file.
+        """
+        if self.errors:
+            logger.error('; '.join(self.errors))
+            send_fail_hook(self.payload, self.signature, self.errors)
+            delete_file(self.file_pointer)
+
     @utils.allow_methods(['put'])
     def on_connection_close(self, *args, **kwargs):
-        """If upload is interrupted, notify metadata application.
+        """Log error if connection terminated.
         """
-        # If no file path, verification has already failed; no need to notify
-        if self.file_path is None:
-            return
-        teardown_incomplete_file(self.file_pointer, self.payload, self.signature)
+        self.errors.append(MESSAGES['INTERRUPTED'])
+        self.teardown()
 
     @utils.allow_methods(['put'])
     def on_finish(self):
-        """Ensure that file is closed by the end of the request.
-        """
-        if self.file_pointer:
-            teardown_file(
-                self.file_pointer,
-                self.content_length,
-                self.payload,
-                self.signature,
-            )
+        self.teardown()
 
 
 def make_app():

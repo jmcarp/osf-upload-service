@@ -7,6 +7,7 @@ import httpretty
 import pytest_httpretty
 
 from tests import utils
+from tests.fixtures import file_content, temp_file
 
 import json
 import hashlib
@@ -21,25 +22,11 @@ from cloudstorm import settings
 
 # Run Celery tasks synchronously for testing
 settings.CELERY_ALWAYS_EAGER = True
-# settings.CELERY_EAGER_PROPAGATES_EXCEPTIONS = False
 from cloudstorm.queue import tasks
 from cloudstorm import storage
 
 
 payload, message, signature = utils.make_signed_payload(sign.upload_signer)
-
-
-@pytest.fixture
-def file_content():
-    return utils.build_random_string(1024)
-
-
-@pytest.yield_fixture
-def temp_file(file_content):
-    with tempfile.NamedTemporaryFile() as file_pointer:
-        file_pointer.write(file_content)
-        file_pointer.seek(0)
-        yield file_pointer
 
 
 @pytest.fixture

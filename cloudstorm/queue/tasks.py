@@ -57,7 +57,7 @@ def RetryTask(task, error_types=(Exception,)):
     except error_types as exc_value:
         try_count = task.request.retries + 1
         backoff = settings.UPLOAD_RETRY_BACKOFF * try_count
-        countdown = 1#settings.UPLOAD_RETRY_DELAY * backoff
+        countdown = settings.UPLOAD_RETRY_DELAY * backoff
         raise task.retry(
             exc=exc_value,
             countdown=countdown,

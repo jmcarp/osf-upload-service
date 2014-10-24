@@ -23,12 +23,87 @@ from cloudstorm import sign
 from cloudstorm import settings
 
 from tests import utils
+from tests.fixtures import file_content, temp_file
 
 
 TEST_FILE_PATH = '/tmp/test'
 START_UPLOAD_URL = 'http://localhost:5000/'
-PAYLOAD = {'extra': {'cheese': 'yes'}}
+PAYLOAD = {
+    'startUrl': 'http://httpbin.org/start',
+    'finishUrl': 'http://httpbin.org/finish',
+}
 SIGNATURE = 'hancock'
+
+
+@pytest.fixture
+def mock_http_client(monkeypatch):
+    mock_client = mock.Mock()
+    monkeypatch.setattr(app, 'http_client', mock_client)
+    return mock_client
+
+
+def test_verify_file_size_valid(temp_file):
+    assert app.verify_file_size(temp_file, 1024)
+
+
+def test_verify_file_size_invalid(temp_file):
+    assert app.verify_file_size(temp_file, 1025) is False
+
+
+def test_delete_file(temp_file):
+    app.delete_file(temp_file)
+    assert not os.path.exists(temp_file.name)
+
+
+def test_delete_file_none():
+    app.delete_file(None)
+
+
+def test_delete_file_deleted(temp_file):
+    os.remove(temp_file.name)
+    app.delete_file(temp_file)
+
+
+def test_fail_hook_no_reason(mock_http_client):
+    app.send_fail_hook(PAYLOAD, SIGNATURE)
+    signature, body = sign.build_hook_body(
+        sign.webhook_signer,
+        {
+            'status': 'error',
+            'reason': '',
+            'uploadSignature': SIGNATURE,
+        },
+    )
+    mock_http_client.fetch.assert_called_with(
+        PAYLOAD['finishUrl'],
+        method='PUT',
+        body=body,
+        headers={
+            'Content-Type': 'application/json',
+            settings.SIGNATURE_HEADER_KEY: signature,
+        },
+    )
+
+
+def test_fail_hook_reasons(mock_http_client):
+    app.send_fail_hook(PAYLOAD, SIGNATURE, ['because', 'i said'])
+    signature, body = sign.build_hook_body(
+        sign.webhook_signer,
+        {
+            'status': 'error',
+            'reason': 'because; i said',
+            'uploadSignature': SIGNATURE,
+        },
+    )
+    mock_http_client.fetch.assert_called_with(
+        PAYLOAD['finishUrl'],
+        method='PUT',
+        body=body,
+        headers={
+            'Content-Type': 'application/json',
+            settings.SIGNATURE_HEADER_KEY: signature,
+        },
+    )
 
 
 class TestStartUpload(testing.AsyncTestCase):
@@ -455,9 +530,7 @@ class TestUploadHandler(testing.AsyncHTTPTestCase):
             size=length,
             type=content_type,
         )
-        producer = make_producer([
-            utils.build_random_string(length / 2),
-        ])
+        producer = make_producer([utils.build_random_string(length / 2)])
         url = self.get_upload_url(message, signature)
         with utils.StubFetch(app.http_client, 'PUT', status=httplib.CREATED):
             try:
@@ -472,4 +545,3 @@ class TestUploadHandler(testing.AsyncHTTPTestCase):
                 )
             except httputil.HTTPOutputError:
                 pass
-
