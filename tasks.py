@@ -1,4 +1,5 @@
-# -*- coding: utf-8 -*-
+#!/usr/bin/env python
+# encoding: utf-8
 
 import os
 import sys
@@ -35,8 +36,8 @@ def celery():
 
 
 @task
-def tornado(port=None):
+def tornado(port=None, processes=None):
     from cloudstorm import app
     port = port or settings.PORT
-    app.main(port=port)
-
+    processes = processes or settings.PROCESSES
+    app.main(port, processes)

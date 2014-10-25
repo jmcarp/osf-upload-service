@@ -13,7 +13,7 @@ from webargs import Arg
 from webargs.tornadoparser import parser
 
 from tornado.ioloop import IOLoop
-from tornado import web, gen, httpclient
+from tornado import web, gen, httpclient, httpserver
 
 from cloudstorm import sign
 from cloudstorm import utils
@@ -346,12 +346,13 @@ def make_app():
     )
 
 
-def main(port):
+def main(port, processes):
     app = make_app()
-    app.listen(port)
+    server = httpserver.HTTPServer(app)
+    server.bind(port)
+    server.start(processes)
     IOLoop.current().start()
 
 
 if __name__ == '__main__':
-    main(settings.PORT)
-
+    main(settings.PORT, settings.PROCESSES)

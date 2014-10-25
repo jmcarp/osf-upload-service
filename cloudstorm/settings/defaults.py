@@ -9,6 +9,7 @@ from cloudstorm.backend import contrib
 SCHEME = 'http'
 DOMAIN = 'localhost'
 PORT = 7777
+PROCESSES = 0
 
 UPLOAD_EXPIRATION_SECONDS = 15
 DOWNLOAD_EXPIRATION_SECONDS = 15
