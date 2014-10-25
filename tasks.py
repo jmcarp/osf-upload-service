@@ -36,8 +36,6 @@ def celery():
 
 
 @task
-def tornado(port=None, processes=None):
+def tornado(port=settings.PORT, processes=settings.PROCESSES, debug=settings.DEBUG):
     from cloudstorm import app
-    port = port or settings.PORT
-    processes = processes or settings.PROCESSES
-    app.main(port, processes)
+    app.main(port, processes, debug)

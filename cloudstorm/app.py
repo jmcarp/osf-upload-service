@@ -15,6 +15,8 @@ from webargs.tornadoparser import parser
 from tornado.ioloop import IOLoop
 from tornado import web, gen, httpclient, httpserver
 
+from werkzeug.local import LocalProxy
+
 from cloudstorm import sign
 from cloudstorm import utils
 from cloudstorm import errors
@@ -25,7 +27,8 @@ from cloudstorm.queue import tasks
 
 logger = logging.getLogger(__name__)
 
-http_client = httpclient.AsyncHTTPClient()
+http_client_container = utils.LazyContainer(lambda: httpclient.AsyncHTTPClient())
+http_client = LocalProxy(http_client_container.get)
 
 
 CORS_ACCEPT_HEADERS = [
@@ -335,19 +338,19 @@ class UploadHandler(web.RequestHandler):
         self.teardown()
 
 
-def make_app():
+def make_app(debug=False):
     return web.Application(
         [
             web.url(r'/urls/upload/', UploadUrlHandler, name='upload_url'),
             web.url(r'/urls/download/', DownloadUrlHandler, name='download_url'),
             web.url(r'/files/', UploadHandler, name='upload_file'),
         ],
-        debug=True,
+        debug=debug,
     )
 
 
-def main(port, processes):
-    app = make_app()
+def main(port, processes, debug):
+    app = make_app(debug and processes == 1)
     server = httpserver.HTTPServer(app)
     server.bind(port)
     server.start(processes)
@@ -355,4 +358,4 @@ def main(port, processes):
 
 
 if __name__ == '__main__':
-    main(settings.PORT, settings.PROCESSES)
+    main(settings.PORT, settings.PROCESSES, settings.DEBUG)

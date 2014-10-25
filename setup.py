@@ -24,6 +24,7 @@ REQUIRES = [
     'six==1.8.0',
     'furl==0.3.95',
     'python-dateutil==2.2',
+    'werkzeug==0.9.6',
 
 ]
 

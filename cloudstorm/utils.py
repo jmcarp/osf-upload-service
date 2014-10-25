@@ -1,4 +1,5 @@
-# -*- coding: utf-8 -*-
+#!/usr/bin/env python
+# encoding: utf-8
 
 import functools
 
@@ -30,4 +31,3 @@ class LazyContainer(object):
         if self._result is None:
             self._result = self.getter()
         return self._result
-

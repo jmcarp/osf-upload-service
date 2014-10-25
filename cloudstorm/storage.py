@@ -1,4 +1,5 @@
-# -*- coding: utf-8 -*-
+#!/usr/bin/env python
+# encoding: utf-8
 
 from cloudstorm.utils import LazyContainer
 from cloudstorm import settings
@@ -16,4 +17,3 @@ def _get_storage_container():
         settings.STORAGE_CONTAINER_NAME
     )
 container_proxy = LazyContainer(_get_storage_container)
-
