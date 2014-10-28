@@ -43,13 +43,11 @@ def add_name_to_url(url, filename=None):
 
 class CloudFilesClient(core.BaseClient):
 
-    def __init__(self, username, api_key, region, lazy=True):
+    def __init__(self, username, api_key, region):
         self.username = username
         self.api_key = api_key
         self.region = region
         self.connection = None
-        if not lazy:
-            self.connect()
 
     def connect(self):
         """Connect to Rackspace using provided credentials.
@@ -122,6 +120,20 @@ class CloudFilesObject(core.BaseObject):
     def __init__(self, pyrax_object, container):
         self._pyrax_object = pyrax_object
         self._container = container
+
+    def __eq__(self, other):
+        if not isinstance(other, CloudFilesObject):
+            return NotImplemented
+        return (
+            self._pyrax_object == other._pyrax_object and
+            self._container == other._container
+        )
+
+    def __ne__(self, other):
+        result = self.__eq__(other)
+        if result is NotImplemented:
+            return result
+        return not result
 
     @property
     def name(self):
