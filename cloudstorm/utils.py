@@ -3,6 +3,8 @@
 
 import functools
 
+from werkzeug.local import LocalProxy
+
 
 def allow_methods(methods):
     """Decorator factory that skips disallowed methods. Intended for use in
@@ -31,3 +33,12 @@ class LazyContainer(object):
         if self._result is None:
             self._result = self.getter()
         return self._result
+
+
+def CachedProxy(getter):
+    """Cached proxy factory. Creates a `LocalProxy` that evaluates to the
+    return value of `getter`, only calling `getter` on first access.
+    :param function getter: Function that takes no arguments
+    """
+    container = LazyContainer(getter)
+    return LocalProxy(container.get)

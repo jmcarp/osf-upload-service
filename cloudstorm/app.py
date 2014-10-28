@@ -2,6 +2,7 @@
 # encoding: utf-8
 
 import os
+import sys
 import json
 import uuid
 import httplib
@@ -15,8 +16,6 @@ from webargs.tornadoparser import parser
 from tornado.ioloop import IOLoop
 from tornado import web, gen, httpclient, httpserver
 
-from werkzeug.local import LocalProxy
-
 from cloudstorm import sign
 from cloudstorm import utils
 from cloudstorm import errors
@@ -26,11 +25,20 @@ from cloudstorm.queue import tasks
 
 
 logger = logging.getLogger(__name__)
-
-http_client_container = utils.LazyContainer(
-    lambda: httpclient.AsyncHTTPClient(force_instance=True)
+logging.basicConfig(
+    level=logging.INFO,
+    stream=sys.stdout,
+    format='[%(asctime)s][%(levelname)s][%(name)s]: %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S',
 )
-http_client = LocalProxy(http_client_container.get)
+
+# We can't touch the `IOLoop` until after the Tornado process is forked, so
+# we wrap the `AsyncHTTPClient` in a cached proxy. We also pass the
+# `force_instance` flag so that the client doesn't share state with the client
+# defined by the application tests.
+http_client = utils.CachedProxy(
+    lambda: httpclient.AsyncHTTPClient(force_instance=True),
+)
 
 
 CORS_ACCEPT_HEADERS = [
