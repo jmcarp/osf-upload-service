@@ -15,7 +15,7 @@ class SignedUrlBase(object):
 
     @abc.abstractmethod
     def _generate_signed_url(self, seconds, method, *args, **kwargs):
-        pass
+        raise NotImplementedError
 
     def generate_signed_url(self, seconds, method, *args, **kwargs):
         if seconds <= 0:
@@ -33,30 +33,30 @@ class BaseClient(SignedUrlBase):
 
     @abc.abstractmethod
     def get_container(self, container):
-        pass
+        raise NotImplementedError
 
     @abc.abstractmethod
     def create_container(self, container):
-        pass
+        raise NotImplementedError
 
 
 class BaseContainer(SignedUrlBase):
 
     @abc.abstractproperty
     def name(self):
-        pass
+        raise NotImplementedError
 
     @abc.abstractmethod
     def list_objects(self, prefix=None):
-        pass
+        raise NotImplementedError
 
     @abc.abstractmethod
     def get_object(self, obj):
-        pass
+        raise NotImplementedError
 
     @abc.abstractmethod
     def upload_file(self, fobj, name):
-        pass
+        raise NotImplementedError
 
     def get_or_upload_file(self, fobj, name):
         try:
@@ -75,33 +75,33 @@ class BaseObject(SignedUrlBase):
 
     @abc.abstractproperty
     def name(self):
-        pass
+        raise NotImplementedError
 
     @abc.abstractproperty
     def size(self):
-        pass
+        raise NotImplementedError
 
     @abc.abstractproperty
     def date_modified(self):
-        pass
+        raise NotImplementedError
 
     @abc.abstractproperty
     def content_type(self):
-        pass
+        raise NotImplementedError
 
     @abc.abstractproperty
     def location(self):
-        pass
+        raise NotImplementedError
 
     @abc.abstractmethod
     def download(self):
         """Download the contents of the object as a string.
         """
-        pass
+        raise NotImplementedError
 
     @abc.abstractmethod
     def delete(self):
-        pass
+        raise NotImplementedError
 
     def __repr__(self):
         return '<{klass}: {name}>'.format(
