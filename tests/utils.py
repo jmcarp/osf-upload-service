@@ -1,4 +1,5 @@
-# -*- coding: utf-8 -*-
+#!/usr/bin/env python
+# encoding: utf-8
 
 import mock
 
@@ -106,4 +107,3 @@ class StubFetch(object):
 
 def build_random_string(nchar):
     return ''.join(random.choice(string.lowercase) for _ in range(nchar))
-

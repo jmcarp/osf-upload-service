@@ -66,7 +66,7 @@ def RetryTask(task, error_types=(Exception,)):
 
 
 @app.task(bind=True)
-def push_file_main(self, file_path):
+def _push_file_main(self, file_path):
     """Push file to storage backend, retrying on failure.
 
     :param str file_path: Path to file on disk
@@ -81,40 +81,29 @@ def push_file_main(self, file_path):
         with RetryTask(self):
             container = storage.container_proxy.get()
             obj = container.get_or_upload_file(file_pointer, hash_str)
-
     return serialize_object(obj)
 
 
-@app.task(bind=True, ignore_result=True)
-def push_file_complete(self, response, payload, signature):
+@app.task(bind=True)
+def _push_file_complete(self, response, payload, signature):
     """Completion callback for `push_file_main`.
 
     :param response: Object data returned by `push_file_main`
     :param dict payload: Payload from signed URL
     :param str signature: Signature from signed URL
     """
-    signature, body = sign.build_hook_body(
-        sign.webhook_signer,
-        {
-            'status': 'success',
-            'uploadSignature': signature,
-            'location': response['location'],
-            'metadata': response['metadata'],
-        },
-    )
+    data = {
+        'status': 'success',
+        'uploadSignature': signature,
+        'location': response['location'],
+        'metadata': response['metadata'],
+    }
     with RetryTask(self):
-        return requests.put(
-            payload['finishUrl'],
-            data=body,
-            headers={
-                'Content-Type': 'application/json',
-                settings.SIGNATURE_HEADER_KEY: signature,
-            },
-        )
+        return _send_hook(data, payload)
 
 
-@app.task(bind=True, ignore_result=True)
-def push_file_error(self, uuid, payload, signature):
+@app.task(bind=True)
+def _push_file_error(self, uuid, payload, signature):
     """Error callback for `push_file_main`.
 
     :param str uuid: UUID of Celery error result
@@ -123,23 +112,40 @@ def push_file_error(self, uuid, payload, signature):
     """
     result = AsyncResult(uuid)
     error = result.result
-    signature, body = sign.build_hook_body(
-        sign.webhook_signer,
-        {
-            'status': 'error',
-            'reason': 'Upload to backend failed: {0}'.format(error),
-            'uploadSignature': signature,
+    data = {
+        'status': 'error',
+        'reason': 'Upload to backend failed: {0}'.format(error),
+        'uploadSignature': signature,
+    }
+    with RetryTask(self):
+        return _send_hook(data, payload)
+
+
+def _send_hook(data, payload):
+    """Send web hook to calling application, retrying on failure.
+
+    :param dict data: JSON-serializable request body
+    :param dict payload: Payload from signed URL
+    """
+    signature, body = sign.build_hook_body(sign.webhook_signer, data)
+    return requests.put(
+        payload['finishUrl'],
+        data=body,
+        headers={
+            'Content-Type': 'application/json',
+            settings.SIGNATURE_HEADER_KEY: signature,
         },
     )
+
+
+@app.task(bind=True)
+def _send_hook_retry(self, data, payload):
     with RetryTask(self):
-        return requests.put(
-            payload['finishUrl'],
-            data=body,
-            headers={
-                'Content-Type': 'application/json',
-                settings.SIGNATURE_HEADER_KEY: signature,
-            },
-        )
+        _send_hook(data, payload)
+
+
+def send_hook(data, payload):
+    return _send_hook_retry.apply_async((data, payload))
 
 
 def push_file(payload, signature, file_path):
@@ -150,8 +156,8 @@ def push_file(payload, signature, file_path):
     :param str signature: Signature from signed URL
     :param str file_path: Path to file on disk
     """
-    return push_file_main.apply_async(
+    return _push_file_main.apply_async(
         (file_path,),
-        link=push_file_complete.s(payload=payload, signature=signature),
-        link_error=push_file_error.s(payload=payload, signature=signature),
+        link=_push_file_complete.s(payload=payload, signature=signature),
+        link_error=_push_file_error.s(payload=payload, signature=signature),
     )

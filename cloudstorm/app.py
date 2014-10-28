@@ -27,7 +27,9 @@ from cloudstorm.queue import tasks
 
 logger = logging.getLogger(__name__)
 
-http_client_container = utils.LazyContainer(lambda: httpclient.AsyncHTTPClient())
+http_client_container = utils.LazyContainer(
+    lambda: httpclient.AsyncHTTPClient(force_instance=True)
+)
 http_client = LocalProxy(http_client_container.get)
 
 
@@ -114,34 +116,6 @@ def delete_file(file_pointer):
         os.remove(file_pointer.name)
     except (AttributeError, OSError):
         pass
-
-
-def send_fail_hook(payload, signature, reasons=None):
-    """Notify calling application that upload has failed.
-
-    :param dict payload:
-    :param str signature:
-    :param list reasons: Error messages
-    """
-    reasons = reasons or []
-    reason = '; '.join(reasons)
-    signature, body = sign.build_hook_body(
-        sign.webhook_signer,
-        {
-            'status': 'error',
-            'reason': reason,
-            'uploadSignature': signature,
-        },
-    )
-    http_client.fetch(
-        payload['finishUrl'],
-        method='PUT',
-        body=body,
-        headers={
-            'Content-Type': 'application/json',
-            settings.SIGNATURE_HEADER_KEY: signature,
-        },
-    )
 
 
 def build_file_path(request, payload):
@@ -322,8 +296,16 @@ class UploadHandler(web.RequestHandler):
         temporary file.
         """
         if self.errors:
-            logger.error('; '.join(self.errors))
-            send_fail_hook(self.payload, self.signature, self.errors)
+            reason = '; '.join(self.errors)
+            logger.error(reason)
+            tasks.send_hook(
+                {
+                    'status': 'error',
+                    'reason': reason,
+                    'uploadSignature': self.signature,
+                },
+                self.payload,
+            )
             delete_file(self.file_pointer)
 
     @utils.allow_methods(['put'])

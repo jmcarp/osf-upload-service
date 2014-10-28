@@ -18,9 +18,12 @@ from tornado import testing
 from tornado import httputil
 from tornado import httpclient
 
-from cloudstorm import app
 from cloudstorm import sign
 from cloudstorm import settings
+
+# Run Celery tasks synchronously for testing
+settings.CELERY_ALWAYS_EAGER = True
+from cloudstorm import app
 
 from tests import utils
 from tests.fixtures import file_content, temp_file
@@ -62,48 +65,6 @@ def test_delete_file_none():
 def test_delete_file_deleted(temp_file):
     os.remove(temp_file.name)
     app.delete_file(temp_file)
-
-
-def test_fail_hook_no_reason(mock_http_client):
-    app.send_fail_hook(PAYLOAD, SIGNATURE)
-    signature, body = sign.build_hook_body(
-        sign.webhook_signer,
-        {
-            'status': 'error',
-            'reason': '',
-            'uploadSignature': SIGNATURE,
-        },
-    )
-    mock_http_client.fetch.assert_called_with(
-        PAYLOAD['finishUrl'],
-        method='PUT',
-        body=body,
-        headers={
-            'Content-Type': 'application/json',
-            settings.SIGNATURE_HEADER_KEY: signature,
-        },
-    )
-
-
-def test_fail_hook_reasons(mock_http_client):
-    app.send_fail_hook(PAYLOAD, SIGNATURE, ['because', 'i said'])
-    signature, body = sign.build_hook_body(
-        sign.webhook_signer,
-        {
-            'status': 'error',
-            'reason': 'because; i said',
-            'uploadSignature': SIGNATURE,
-        },
-    )
-    mock_http_client.fetch.assert_called_with(
-        PAYLOAD['finishUrl'],
-        method='PUT',
-        body=body,
-        headers={
-            'Content-Type': 'application/json',
-            settings.SIGNATURE_HEADER_KEY: signature,
-        },
-    )
 
 
 class TestStartUpload(testing.AsyncTestCase):
@@ -494,9 +455,10 @@ class TestUploadHandler(testing.AsyncHTTPTestCase):
                 )
             assert excinfo.value.code == 409
 
+    @mock.patch('cloudstorm.app.tasks.send_hook')
     @file_count_increment(0)
     @testing.gen_test
-    def test_upload_client_disconnects_calls_connection_closed(self):
+    def test_upload_client_disconnects_calls_connection_closed(self, mock_send_hook):
         producer = make_producer(
             content=['about', 'to', 'crash'],
             error=ValueError('told you')
@@ -519,10 +481,19 @@ class TestUploadHandler(testing.AsyncHTTPTestCase):
                     },
                     body_producer=producer,
                 )
+        mock_send_hook.assert_called_with(
+            {
+                'status': 'error',
+                'reason': app.MESSAGES['INTERRUPTED'],
+                'uploadSignature': signature,
+            },
+            payload,
+        )
 
+    @mock.patch('cloudstorm.app.tasks.send_hook')
     @file_count_increment(0)
     @testing.gen_test
-    def test_upload_file_spoofed_content_length(self):
+    def test_upload_file_spoofed_content_length(self, mock_send_hook):
         length = 1024
         content_type = 'application/json'
         payload, message, signature = utils.make_signed_payload(
@@ -545,3 +516,11 @@ class TestUploadHandler(testing.AsyncHTTPTestCase):
                 )
             except httputil.HTTPOutputError:
                 pass
+        mock_send_hook.assert_called_with(
+            {
+                'status': 'error',
+                'reason': app.MESSAGES['INTERRUPTED'],
+                'uploadSignature': signature,
+            },
+            payload,
+        )
