@@ -1,0 +1,18 @@
+# Tornado app
+tornado==4.0.2
+webargs==0.8.1
+git+https://github.com/jmcarp/raven-python
+
+# Task queue
+celery==3.1.15
+
+# Storage backends
+boto==2.32.1
+pyrax==1.9.2
+
+# Miscellaneous
+furl==0.3.95
+python-dateutil==2.2
+requests==2.4.1
+six==1.8.0
+werkzeug==0.9.6

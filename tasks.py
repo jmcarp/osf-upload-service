@@ -6,7 +6,6 @@ import sys
 
 from invoke import task, run
 
-from cloudstorm.queue import app
 from cloudstorm import settings
 
 
@@ -32,6 +31,7 @@ def rabbitmq():
 
 @task
 def celery():
+    from cloudstorm.queue import app
     app.worker_main(['worker'])
 
 

@@ -3,8 +3,6 @@
 
 import hashlib
 
-from cloudstorm.backend import contrib
-
 
 SCHEME = 'http'
 DOMAIN = 'localhost'
@@ -12,13 +10,15 @@ PORT = 7777
 PROCESSES = 0
 DEBUG = True
 
+SENTRY_DSN = None
+
 UPLOAD_EXPIRATION_SECONDS = 15
 DOWNLOAD_EXPIRATION_SECONDS = 15
 
 FILE_CACHE_PATH = '/tmp'
 
 # Backend options
-STORAGE_CLIENT_CLASS = contrib.cloudfiles.CloudFilesClient
+STORAGE_CLIENT_CLASS = None
 STORAGE_CLIENT_OPTIONS = {
     'username': None,
     'api_key': None,

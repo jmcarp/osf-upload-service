@@ -4,8 +4,8 @@ python:
   - "2.7"
 
 install:
-  - pip install --upgrade .
+  - pip install invoke
+  - invoke install --upgrade
 
 script:
-  - python setup.py test
-
+  - invoke test

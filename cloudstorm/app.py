@@ -16,6 +16,9 @@ from webargs.tornadoparser import parser
 from tornado.ioloop import IOLoop
 from tornado import web, gen, httpclient, httpserver
 
+from raven.contrib.tornado import SentryMixin
+from raven.contrib.tornado import AsyncSentryClient
+
 from cloudstorm import sign
 from cloudstorm import utils
 from cloudstorm import errors
@@ -209,7 +212,7 @@ def verify_signature(signer):
 verify_signature_urls = verify_signature(sign.url_signer)
 
 
-class UploadUrlHandler(web.RequestHandler):
+class UploadUrlHandler(SentryMixin, web.RequestHandler):
 
     @verify_signature_urls
     def post(self):
@@ -251,7 +254,7 @@ def get_download_url(location, filename=None):
     )
 
 
-class DownloadUrlHandler(web.RequestHandler):
+class DownloadUrlHandler(SentryMixin, web.RequestHandler):
 
     @verify_signature_urls
     def post(self):
@@ -261,7 +264,7 @@ class DownloadUrlHandler(web.RequestHandler):
 
 
 @web.stream_request_body
-class UploadHandler(web.RequestHandler):
+class UploadHandler(SentryMixin, web.RequestHandler):
 
     def setup(self):
         self.payload = None
@@ -347,7 +350,7 @@ class UploadHandler(web.RequestHandler):
 
 
 def make_app(debug=False):
-    return web.Application(
+    app = web.Application(
         [
             web.url(r'/urls/upload/', UploadUrlHandler, name='upload_url'),
             web.url(r'/urls/download/', DownloadUrlHandler, name='download_url'),
@@ -355,6 +358,9 @@ def make_app(debug=False):
         ],
         debug=debug,
     )
+    if settings.SENTRY_DSN:
+        app.sentry_client = AsyncSentryClient(settings.SENTRY_DSN)
+    return app
 
 
 def main(port, processes, debug):

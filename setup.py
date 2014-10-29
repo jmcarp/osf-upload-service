@@ -1,4 +1,5 @@
-# -*- coding: utf-8 -*-
+#!/usr/bin/env python
+# encoding: utf-8
 
 import re
 import sys
@@ -8,46 +9,18 @@ from setuptools.command.test import test as TestCommand
 
 REQUIRES = [
 
-    # Tornado app
-    'requests==2.4.1',
-    'tornado==4.0.2',
-    'webargs==0.8.1',
-
-    # Task queue
-    'celery==3.1.15',
-
     # Storage backends
     'boto==2.32.1',
     'pyrax==1.9.2',
 
     # Miscellaneous
-    'six==1.8.0',
     'furl==0.3.95',
     'python-dateutil==2.2',
+    'requests==2.4.1',
+    'six==1.8.0',
     'werkzeug==0.9.6',
 
 ]
-
-TEST_REQUIRES = [
-    'mock',
-    'pytest',
-    'httpretty',
-    'pytest-httpretty',
-]
-
-
-class PyTest(TestCommand):
-    def finalize_options(self):
-        TestCommand.finalize_options(self)
-        self.test_args = [
-            '--verbose'
-        ]
-        self.test_suite = True
-
-    def run_tests(self):
-        import pytest
-        errcode = pytest.main(self.test_args)
-        sys.exit(errcode)
 
 
 def find_version(fname):
@@ -79,7 +52,7 @@ setup(
     author='Center for Open Science',
     author_email='josh@cos.io',
     url='https://github.com/CenterForOpenScience/osf-upload-service',
-    packages=find_packages(exclude=("test*", )),
+    packages=find_packages(exclude=("tests*", )),
     package_dir={'cloudstorm': 'cloudstorm'},
     include_package_data=True,
     install_requires=REQUIRES,
@@ -91,8 +64,4 @@ setup(
         "Programming Language :: Python :: 2",
         'Programming Language :: Python :: 2.7',
     ],
-    test_suite='tests',
-    tests_require=TEST_REQUIRES,
-    cmdclass={'test': PyTest},
 )
-
