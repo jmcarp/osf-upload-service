@@ -105,22 +105,6 @@ def build_hook_body(signer, payload):
     return signature, json.dumps(payload)
 
 
-def get_argument_from_request(request, name, list_=False, default=None):
-    values = request.arguments.get(name, [])
-    if list_:
-        return values
-    return values[0] if values else default
-
-
-def get_payload_from_request(request):
-    message = get_argument_from_request(request, 'message')
-    signature = get_argument_from_request(request, 'signature')
-    try:
-        return unserialize_payload(message), signature
-    except (TypeError, ValueError):
-        raise errors.SignedUrlError('Invalid message')
-
-
 class _Verifiers(object):
 
     def __init__(self):

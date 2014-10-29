@@ -64,12 +64,14 @@ def tests_verify_valid():
     signer = sign.Signer(key, hashlib.sha1)
     message, signature = signer.sign_payload(payload)
     assert signer.verify_payload(signature, payload)
+    assert signer.verify_message(signature, message)
 
 
 def test_verify_invalid():
     signer = sign.Signer(key, hashlib.sha1)
     message, signature = signer.sign_payload(payload)
     assert not signer.verify_payload(signature[::-1], payload)
+    assert not signer.verify_message(signature[::-1], message)
 
 
 def test_build_upload_url(monkeypatch):
@@ -114,29 +116,6 @@ def test_build_hook_body():
     body_data = json.loads(body)
     assert signature == expected
     assert body_data == payload
-
-
-def test_get_payload_from_request():
-    payload, message, signature = utils.make_signed_payload(sign.upload_signer)
-    url = furl.furl('http://localhost:5000/')
-    url.args['message'] = message
-    url.args['signature'] = signature
-    request = utils.make_request(uri=url.url)
-    retrieved_payload, retrieve_signature = sign.get_payload_from_request(request)
-    assert payload == retrieved_payload
-    assert signature == retrieve_signature
-
-
-def test_get_payload_from_request_not_found():
-    request = utils.make_request(uri='http://localhost:5000/')
-    with pytest.raises(errors.SignedUrlError):
-        sign.get_payload_from_request(request)
-
-
-def test_get_payload_from_request_invalid():
-    request = utils.make_request(uri='http://localhost:5000/?message=invalid')
-    with pytest.raises(errors.SignedUrlError):
-        sign.get_payload_from_request(request)
 
 
 def test_verify_signature_valid():
@@ -207,12 +186,22 @@ def test_verify_size_valid_if_none_specified():
     sign.verify_size(request, payload, signature)
 
 
-def test_verify_size_invalid():
+def test_verify_size_invalid_value():
     payload, message, signature = utils.make_signed_payload(
         sign.upload_signer,
         size=1025,
     )
     request = utils.make_request(headers={'Content-Length': 1024})
+    with pytest.raises(errors.SignedUrlError):
+        sign.verify_size(request, payload, signature)
+
+
+def test_verify_size_invalid_type():
+    payload, message, signature = utils.make_signed_payload(
+        sign.upload_signer,
+        size=1025,
+    )
+    request = utils.make_request(headers={'Content-Length': 'seven'})
     with pytest.raises(errors.SignedUrlError):
         sign.verify_size(request, payload, signature)
 

@@ -11,7 +11,7 @@ REQUIRES = [
     # Tornado app
     'requests==2.4.1',
     'tornado==4.0.2',
-    'webargs==0.6.2',
+    'webargs==0.8.0',
 
     # Task queue
     'celery==3.1.15',
@@ -83,6 +83,9 @@ setup(
     package_dir={'cloudstorm': 'cloudstorm'},
     include_package_data=True,
     install_requires=REQUIRES,
+    dependency_links=[
+        'git+ssh://git@github.com/jmcarp/webargs.git#egg=webargs-0.8.0',
+    ],
     zip_safe=False,
     classifiers=[
         'Development Status :: 2 - Pre-Alpha',

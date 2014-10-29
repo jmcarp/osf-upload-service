@@ -54,14 +54,32 @@ MESSAGES = {
 }
 
 
+upload_args = {
+    'message': Arg(unicode, required=True),
+    'signature': Arg(unicode, required=True),
+}
+
+
+def get_payload(message):
+    try:
+        return sign.unserialize_payload(message)
+    except (TypeError, ValueError):
+        raise web.HTTPError(
+            httplib.BAD_REQUEST,
+            reason=error.message,
+        )
+
+
 def verify_upload(request):
     """Verify signed URL and upload request.
 
     :param request: Tornado request object
     :raise: `web.HTTPError` if signature or upload is invalid
     """
+    args = parser.parse(upload_args, request, targets=('querystring',))
+    payload = get_payload(args['message'])
+    signature = args['signature']
     try:
-        payload, signature = sign.get_payload_from_request(request)
         sign.Verifiers.verify(request, payload, signature)
     except errors.SignedUrlError as error:
         raise web.HTTPError(
