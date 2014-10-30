@@ -16,7 +16,7 @@ def install(upgrade=False):
 
 @task
 def test():
-    cmd = 'py.test tests'
+    cmd = 'py.test --cov-report term-missing --cov cloudstorm tests'
     run(cmd, pty=True)
 
 
