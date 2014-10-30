@@ -2,7 +2,7 @@
 osf-upload-service
 ==================
 
-.. image:: https://travis-ci.org/CenterForOpenScience/osf-upload-service?branch=master
+.. image:: https://travis-ci.org/CenterForOpenScience/osf-upload-service.png?branch=master
     :target: https://travis-ci.org/CenterForOpenScience/osf-upload-service
 
 *osf-upload-service is a service that links web applications with cloud storage tools like Amazon S3 and Rackspace Cloud Files.*
