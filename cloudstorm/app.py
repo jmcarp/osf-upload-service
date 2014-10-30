@@ -358,8 +358,7 @@ def make_app(debug=False):
         ],
         debug=debug,
     )
-    if settings.SENTRY_DSN:
-        app.sentry_client = AsyncSentryClient(settings.SENTRY_DSN)
+    app.sentry_client = AsyncSentryClient(settings.SENTRY_DSN)
     return app
 
 
