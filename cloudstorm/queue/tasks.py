@@ -1,15 +1,23 @@
 #!/usr/bin/env python
 # encoding: utf-8
 
+import logging
+import functools
 import contextlib
 
 import requests
+
 from celery.result import AsyncResult
+from celery.utils.log import get_task_logger
 
 from cloudstorm import sign
 from cloudstorm import storage
 from cloudstorm import settings
 from cloudstorm.queue import app
+
+
+logger = get_task_logger(__name__)
+logger.setLevel(logging.INFO)
 
 
 def iter_chunks(file_pointer, chunk_size):
@@ -49,6 +57,43 @@ def serialize_object(file_object):
     }
 
 
+def _log_task(func):
+    """Decorator to add standardized logging to Celery tasks. Decorated tasks
+    must also be decorated with `bind=True` so that `self` is available.
+    """
+    @functools.wraps(func)
+    def wrapped(self, *args, **kwargs):
+        logger.info('Called {0}(*{1}, **{2}); attempt #{3}'.format(
+            getattr(self.request, 'task', None),
+            self.request.args,
+            self.request.kwargs,
+            self.request.retries,
+        ))
+        return func(self, *args, **kwargs)
+    return wrapped
+
+
+def _create_task(*args, **kwargs):
+    """Decorator factory combining `_log_task` and `task(bind=True, *args,
+    **kwargs)`. Return a decorator that turns the decorated function into a
+    Celery task that logs its calls.
+    """
+    def wrapper(func):
+        wrapped = _log_task(func)
+        wrapped = app.task(bind=True, *args, **kwargs)(wrapped)
+        return wrapped
+    return wrapper
+
+
+def task(*args, **kwargs):
+    """Decorator or decorator factory for logged tasks. If passed a function,
+    decorate it; if passed anything else, return a decorator.
+    """
+    if len(args) == 1 and callable(args[0]):
+        return _create_task()(args[0])
+    return _create_task(*args, **kwargs)
+
+
 @contextlib.contextmanager
 def RetryTask(task, error_types=(Exception,)):
     try:
@@ -64,7 +109,7 @@ def RetryTask(task, error_types=(Exception,)):
         )
 
 
-@app.task(bind=True)
+@task
 def _push_file_main(self, file_path):
     """Push file to storage backend, retrying on failure.
 
@@ -83,7 +128,7 @@ def _push_file_main(self, file_path):
     return serialize_object(obj)
 
 
-@app.task(bind=True)
+@task
 def _push_file_complete(self, response, payload, signature):
     """Completion callback for `push_file_main`.
 
@@ -101,7 +146,7 @@ def _push_file_complete(self, response, payload, signature):
         return _send_hook(data, payload)
 
 
-@app.task(bind=True)
+@task
 def _push_file_error(self, uuid, payload, signature):
     """Error callback for `push_file_main`.
 
@@ -137,7 +182,7 @@ def _send_hook(data, payload):
     )
 
 
-@app.task(bind=True)
+@task
 def _send_hook_retry(self, data, payload):
     with RetryTask(self):
         _send_hook(data, payload)
