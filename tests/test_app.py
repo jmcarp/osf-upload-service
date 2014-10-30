@@ -23,7 +23,8 @@ from cloudstorm import settings
 
 # Run Celery tasks synchronously for testing
 settings.CELERY_ALWAYS_EAGER = True
-from cloudstorm import app
+from cloudstorm.app import main
+from cloudstorm.app.handlers import upload
 
 from tests import utils
 from tests.fixtures import file_content, temp_file
@@ -46,40 +47,40 @@ def mock_http_client(monkeypatch):
 
 
 def test_verify_file_size_valid(temp_file):
-    assert app.verify_file_size(temp_file, 1024)
+    assert upload.verify_file_size(temp_file, 1024)
 
 
 def test_verify_file_size_invalid(temp_file):
-    assert app.verify_file_size(temp_file, 1025) is False
+    assert upload.verify_file_size(temp_file, 1025) is False
 
 
 def test_delete_file(temp_file):
-    app.delete_file(temp_file)
+    upload.delete_file(temp_file)
     assert not os.path.exists(temp_file.name)
 
 
 def test_delete_file_none():
-    app.delete_file(None)
+    upload.delete_file(None)
 
 
 def test_delete_file_deleted(temp_file):
     os.remove(temp_file.name)
-    app.delete_file(temp_file)
+    upload.delete_file(temp_file)
 
 
 class TestStartUpload(testing.AsyncTestCase):
 
     @testing.gen_test
     def test_start_upload_success(self):
-        with utils.StubFetch(app.http_client, 'PUT', status=httplib.CREATED):
-            resp = yield app.start_upload(START_UPLOAD_URL, SIGNATURE, PAYLOAD)
+        with utils.StubFetch(upload.http_client, 'PUT', status=httplib.CREATED):
+            resp = yield upload.start_upload(START_UPLOAD_URL, SIGNATURE, PAYLOAD)
         assert resp.code == 201
 
     @testing.gen_test
     def test_start_upload_error(self):
-        with utils.StubFetch(app.http_client, 'PUT', status=httplib.CONFLICT):
+        with utils.StubFetch(upload.http_client, 'PUT', status=httplib.CONFLICT):
             with pytest.raises(web.HTTPError) as excinfo:
-                resp = yield app.start_upload(START_UPLOAD_URL, SIGNATURE, PAYLOAD)
+                resp = yield upload.start_upload(START_UPLOAD_URL, SIGNATURE, PAYLOAD)
             assert excinfo.value.status_code == 409
 
 
@@ -122,7 +123,7 @@ def file_count_increment(increment):
 class TestUploadUrlHandler(testing.AsyncHTTPTestCase):
 
     def get_app(self):
-        return app.make_app()
+        return main.make_app()
 
     def setUp(self):
         super(TestUploadUrlHandler, self).setUp()
@@ -259,7 +260,7 @@ class TestDownloadUrlHandler(testing.AsyncHTTPTestCase):
         }
 
     def get_app(self):
-        return app.make_app()
+        return main.make_app()
 
     def check_mock_client(self, mock_client, filename, **kwargs):
         expected = dict(
@@ -274,7 +275,7 @@ class TestDownloadUrlHandler(testing.AsyncHTTPTestCase):
             **expected
         )
 
-    @mock.patch('cloudstorm.app.storage.client_proxy._result')
+    @mock.patch('cloudstorm.storage.client_proxy._result')
     @testing.gen_test
     def test_get_download_url_with_filename(self, mock_client):
         mock_signed_url = 'http://secret.com/'
@@ -301,7 +302,7 @@ class TestDownloadUrlHandler(testing.AsyncHTTPTestCase):
         assert resp_data['url'] == mock_signed_url
         self.check_mock_client(mock_client, filename=u'the-miracle.mp3')
 
-    @mock.patch('cloudstorm.app.storage.client_proxy._result')
+    @mock.patch('cloudstorm.storage.client_proxy._result')
     @testing.gen_test
     def test_get_download_url_with_unicode_filename(self, mock_client):
         mock_signed_url = 'http://secret.com/'
@@ -328,7 +329,7 @@ class TestDownloadUrlHandler(testing.AsyncHTTPTestCase):
         assert resp_data['url'] == mock_signed_url
         self.check_mock_client(mock_client, filename=u'killer-qüeen.mp3')
 
-    @mock.patch('cloudstorm.app.storage.client_proxy._result')
+    @mock.patch('cloudstorm.storage.client_proxy._result')
     @testing.gen_test
     def test_get_download_url_without_filename(self, mock_client):
         mock_signed_url = 'http://secret.com/'
@@ -375,7 +376,7 @@ class TestDownloadUrlHandler(testing.AsyncHTTPTestCase):
 class TestUploadHandler(testing.AsyncHTTPTestCase):
 
     def get_app(self):
-        return app.make_app()
+        return main.make_app()
 
     def get_upload_url(self, message, signature):
         url = furl.furl(self.get_url('/files/'))
@@ -390,8 +391,8 @@ class TestUploadHandler(testing.AsyncHTTPTestCase):
         except OSError:
             pass
 
-    @mock.patch('cloudstorm.app.tasks.push_file')
-    @mock.patch('cloudstorm.app.build_file_path')
+    @mock.patch('cloudstorm.queue.tasks.push_file')
+    @mock.patch('cloudstorm.app.handlers.upload.build_file_path')
     @testing.gen_test
     def test_upload_file(self, mock_build_path, mock_push_file):
         mock_build_path.return_value = TEST_FILE_PATH
@@ -404,7 +405,7 @@ class TestUploadHandler(testing.AsyncHTTPTestCase):
         )
         url = self.get_upload_url(message, signature)
         body = utils.build_random_string(length)
-        with utils.StubFetch(app.http_client, 'PUT', status=httplib.CREATED):
+        with utils.StubFetch(upload.http_client, 'PUT', status=httplib.CREATED):
             resp = yield self.http_client.fetch(
                 url,
                 method='PUT',
@@ -424,7 +425,7 @@ class TestUploadHandler(testing.AsyncHTTPTestCase):
             type=content_type,
         )
         url = self.get_upload_url(message, signature[::-1])
-        with utils.StubFetch(app.http_client, 'PUT', status=httplib.CREATED):
+        with utils.StubFetch(upload.http_client, 'PUT', status=httplib.CREATED):
             with pytest.raises(httpclient.HTTPError) as excinfo:
                 resp = yield self.http_client.fetch(
                     url,
@@ -445,7 +446,7 @@ class TestUploadHandler(testing.AsyncHTTPTestCase):
             type=content_type,
         )
         url = self.get_upload_url(message, signature)
-        with utils.StubFetch(app.http_client, 'PUT', status=httplib.CONFLICT):
+        with utils.StubFetch(upload.http_client, 'PUT', status=httplib.CONFLICT):
             with pytest.raises(httpclient.HTTPError) as excinfo:
                 resp = yield self.http_client.fetch(
                     url,
@@ -455,7 +456,7 @@ class TestUploadHandler(testing.AsyncHTTPTestCase):
                 )
             assert excinfo.value.code == 409
 
-    @mock.patch('cloudstorm.app.tasks.send_hook')
+    @mock.patch('cloudstorm.queue.tasks.send_hook')
     @file_count_increment(0)
     @testing.gen_test
     def test_upload_client_disconnects_calls_connection_closed(self, mock_send_hook):
@@ -471,7 +472,7 @@ class TestUploadHandler(testing.AsyncHTTPTestCase):
             type=content_type,
         )
         url = self.get_upload_url(message, signature)
-        with utils.StubFetch(app.http_client, 'PUT', status=httplib.CREATED):
+        with utils.StubFetch(upload.http_client, 'PUT', status=httplib.CREATED):
             with pytest.raises(ValueError) as excinfo:
                 resp = yield self.http_client.fetch(
                     url,
@@ -484,13 +485,13 @@ class TestUploadHandler(testing.AsyncHTTPTestCase):
         mock_send_hook.assert_called_with(
             {
                 'status': 'error',
-                'reason': app.MESSAGES['INTERRUPTED'],
+                'reason': upload.MESSAGES['INTERRUPTED'],
                 'uploadSignature': signature,
             },
             payload,
         )
 
-    @mock.patch('cloudstorm.app.tasks.send_hook')
+    @mock.patch('cloudstorm.queue.tasks.send_hook')
     @file_count_increment(0)
     @testing.gen_test
     def test_upload_file_spoofed_content_length(self, mock_send_hook):
@@ -503,7 +504,7 @@ class TestUploadHandler(testing.AsyncHTTPTestCase):
         )
         producer = make_producer([utils.build_random_string(length / 2)])
         url = self.get_upload_url(message, signature)
-        with utils.StubFetch(app.http_client, 'PUT', status=httplib.CREATED):
+        with utils.StubFetch(upload.http_client, 'PUT', status=httplib.CREATED):
             try:
                 resp = yield self.http_client.fetch(
                     url,
@@ -519,7 +520,7 @@ class TestUploadHandler(testing.AsyncHTTPTestCase):
         mock_send_hook.assert_called_with(
             {
                 'status': 'error',
-                'reason': app.MESSAGES['INTERRUPTED'],
+                'reason': upload.MESSAGES['INTERRUPTED'],
                 'uploadSignature': signature,
             },
             payload,
