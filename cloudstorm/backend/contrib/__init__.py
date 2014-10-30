@@ -1,5 +1,5 @@
-# -*- coding: utf-8 -*-
+#!/usr/bin/env python
+# encoding: utf-8
 
-from . import s3
-from . import cloudfiles
-
+from . import s3            # noqa
+from . import cloudfiles    # noqa

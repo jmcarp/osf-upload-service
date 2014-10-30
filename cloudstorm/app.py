@@ -66,7 +66,7 @@ upload_args = {
 def get_payload(message):
     try:
         return sign.unserialize_payload(message)
-    except (TypeError, ValueError):
+    except (TypeError, ValueError) as error:
         raise web.HTTPError(
             httplib.BAD_REQUEST,
             reason=error.message,
@@ -287,9 +287,6 @@ class UploadHandler(SentryMixin, web.RequestHandler):
         yield start_upload(self.payload['startUrl'], self.signature, self.payload)
         self.file_path = build_file_path(self.request, self.payload)
         self.file_pointer = open(self.file_path, 'wb')
-        content_length_text = int_or_none(
-            self.request.headers.get('Content-Length')
-        )
 
     @utils.allow_methods(['put'])
     def data_received(self, chunk):

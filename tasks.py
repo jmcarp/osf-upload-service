@@ -1,9 +1,6 @@
 #!/usr/bin/env python
 # encoding: utf-8
 
-import os
-import sys
-
 from invoke import task, run
 
 from cloudstorm import settings
@@ -21,6 +18,11 @@ def install(upgrade=False):
 def test():
     cmd = 'py.test tests'
     run(cmd, pty=True)
+
+
+@task
+def flake():
+    run('flake8 .')
 
 
 @task

@@ -11,6 +11,7 @@ def allow_methods(methods):
     subclasses of `RequestHandler`.
     """
     methods = [method.lower() for method in methods]
+
     def wrapper(func):
         @functools.wraps(func)
         def wrapped(self, *args, **kwargs):

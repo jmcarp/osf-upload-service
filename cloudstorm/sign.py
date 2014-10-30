@@ -1,4 +1,5 @@
-# -*- coding: utf-8 -*-
+#!/usr/bin/env python
+# encoding: utf-8
 
 import hmac
 import json
@@ -153,4 +154,3 @@ def verify_content_type(request, payload, signature):
     type_ = payload.get('type', None)
     if type_ and type_ != request.headers.get('Content-Type'):
         raise errors.SignedUrlError('File has incorrect content type')
-
