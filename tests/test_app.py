@@ -21,8 +21,10 @@ from tornado import httpclient
 from cloudstorm import sign
 from cloudstorm import settings
 
-# Run Celery tasks synchronously for testing
+# Patch settings for testing
 settings.CELERY_ALWAYS_EAGER = True
+settings.SENTRY_DSN = None
+
 from cloudstorm.app import main
 from cloudstorm.app.handlers import upload
 

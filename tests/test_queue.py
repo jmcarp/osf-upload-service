@@ -20,8 +20,10 @@ from celery.result import AsyncResult
 from cloudstorm import sign
 from cloudstorm import settings
 
-# Run Celery tasks synchronously for testing
+# Patch settings for testing
 settings.CELERY_ALWAYS_EAGER = True
+settings.SENTRY_DSN = None
+
 from cloudstorm.queue import tasks
 from cloudstorm import storage
 
