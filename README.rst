@@ -36,6 +36,7 @@ Usage
 ::
 
     invoke rabbitmq
+    invoke redis
     invoke celery
     invoke tornado
 

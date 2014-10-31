@@ -128,7 +128,7 @@ def _push_file_main(self, file_path):
     return serialize_object(obj)
 
 
-@task
+@task(ignore_result=True)
 def _push_file_complete(self, response, payload, signature):
     """Completion callback for `push_file_main`.
 
@@ -146,7 +146,7 @@ def _push_file_complete(self, response, payload, signature):
         return _send_hook(data, payload)
 
 
-@task
+@task(ignore_result=True)
 def _push_file_error(self, uuid, payload, signature):
     """Error callback for `push_file_main`.
 
@@ -182,7 +182,7 @@ def _send_hook(data, payload):
     )
 
 
-@task
+@task(ignore_result=True)
 def _send_hook_retry(self, data, payload):
     with RetryTask(self):
         _send_hook(data, payload)

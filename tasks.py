@@ -32,6 +32,12 @@ def rabbitmq():
 
 
 @task
+def redis():
+    cmd = 'redis-server'
+    run(cmd, pty=True)
+
+
+@task
 def celery():
     from cloudstorm.queue import app
     app.worker_main(['worker'])
