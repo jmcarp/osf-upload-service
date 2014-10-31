@@ -188,7 +188,7 @@ class UploadHandler(SentryMixin, web.RequestHandler):
     def options(self):
         self.set_header('Access-Control-Allow-Headers', ', '.join(CORS_ACCEPT_HEADERS))
         self.set_header('Access-Control-Allow-Methods', 'PUT'),
-        self.set_status(204)
+        self.set_status(httplib.NO_CONTENT)
 
     def put(self):
         """After file is uploaded, push to backend via Celery.

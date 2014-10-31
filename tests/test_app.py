@@ -134,6 +134,16 @@ class TestUploadUrlHandler(testing.AsyncHTTPTestCase):
         self.start_url = 'http://localhost:5000/start/'
         self.finish_url = 'http://localhost:5000/finish/'
 
+    @testing.gen_test
+    def test_options(self):
+        resp = yield self.http_client.fetch(
+            self.get_url('/files/'),
+            method='OPTIONS',
+        )
+        assert resp.code == 204
+        assert resp.headers['Access-Control-Allow-Origin'] == '*'
+        assert resp.headers['Access-Control-Allow-Methods'] == 'PUT'
+
     @mock.patch('time.time')
     @testing.gen_test
     def test_create_upload_url(self, mock_time):
