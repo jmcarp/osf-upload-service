@@ -468,6 +468,27 @@ class TestUploadHandler(testing.AsyncHTTPTestCase):
                 )
             assert excinfo.value.code == 409
 
+    @file_count_increment(0)
+    @testing.gen_test
+    def test_upload_file_start_upload_app_times_out(self):
+        length = 1024
+        content_type = 'application/json'
+        payload, message, signature = utils.make_signed_payload(
+            sign.upload_signer,
+            size=length,
+            type=content_type,
+        )
+        url = self.get_upload_url(message, signature)
+        with utils.StubFetch(upload.http_client, 'PUT', status=599):
+            with pytest.raises(httpclient.HTTPError) as excinfo:
+                resp = yield self.http_client.fetch(
+                    url,
+                    method='PUT',
+                    headers={'Content-Type': content_type},
+                    body=utils.build_random_string(length),
+                )
+            assert excinfo.value.code == 408
+
     @mock.patch('cloudstorm.queue.tasks.send_hook')
     @file_count_increment(0)
     @testing.gen_test

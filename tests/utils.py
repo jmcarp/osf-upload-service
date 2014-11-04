@@ -8,7 +8,6 @@ import random
 import string
 import httplib
 
-from tornado import web
 from tornado import httputil
 from tornado import concurrent
 from tornado import httpclient
@@ -74,7 +73,7 @@ def make_fetch_future(request, status):
         response = make_response(request, status)
         future.set_result(response)
     else:
-        exception = web.HTTPError(status)
+        exception = httpclient.HTTPError(status)
         future.set_exception(exception)
     return future
 

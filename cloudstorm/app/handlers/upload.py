@@ -84,6 +84,12 @@ def verify_upload(request):
     return payload, signature
 
 
+# Map non-standard HTTP codes
+ERROR_MAP = {
+    599: httplib.REQUEST_TIMEOUT,
+}
+
+
 @gen.coroutine
 def start_upload(url, signature, payload):
     """Notify metadata application that file upload has started. Catch and
@@ -115,7 +121,7 @@ def start_upload(url, signature, payload):
     except httpclient.HTTPError as error:
         logger.error('Begin-upload request rejected. Aborting upload.')
         logger.exception(error)
-        raise web.HTTPError(error.code)
+        raise web.HTTPError(ERROR_MAP.get(error.code, error.code))
 
 
 def get_payload(message):
