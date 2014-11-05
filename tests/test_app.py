@@ -12,10 +12,13 @@ import functools
 
 import furl
 
+from werkzeug.local import LocalProxy
+
 from tornado import gen
 from tornado import web
 from tornado import testing
 from tornado import httputil
+from tornado import concurrent
 from tornado import httpclient
 
 from cloudstorm import sign
@@ -33,19 +36,14 @@ from tests.fixtures import file_content, temp_file
 
 
 TEST_FILE_PATH = '/tmp/test'
-START_UPLOAD_URL = 'http://localhost:5000/'
+START_UPLOAD_URL = 'http://localhost:5000/start/'
+PING_URL = 'http://localhost:5000/ping/'
 PAYLOAD = {
     'startUrl': 'http://httpbin.org/start',
     'finishUrl': 'http://httpbin.org/finish',
+    'pingUrl': 'http://httpbin.org/ping',
 }
 SIGNATURE = 'hancock'
-
-
-@pytest.fixture
-def mock_http_client(monkeypatch):
-    mock_client = mock.Mock()
-    monkeypatch.setattr(app, 'http_client', mock_client)
-    return mock_client
 
 
 def test_verify_file_size_valid(temp_file):
@@ -70,7 +68,7 @@ def test_delete_file_deleted(temp_file):
     upload.delete_file(temp_file)
 
 
-class TestStartUpload(testing.AsyncTestCase):
+class TestWebHooks(testing.AsyncTestCase):
 
     @testing.gen_test
     def test_start_upload_success(self):
@@ -84,6 +82,18 @@ class TestStartUpload(testing.AsyncTestCase):
             with pytest.raises(web.HTTPError) as excinfo:
                 resp = yield upload.start_upload(START_UPLOAD_URL, SIGNATURE, PAYLOAD)
             assert excinfo.value.status_code == 409
+
+    @testing.gen_test
+    def test_ping(self):
+        with utils.StubFetch(upload.http_client, 'POST', status=httplib.OK):
+            resp = yield upload.ping(PING_URL, SIGNATURE)
+        assert resp.code == 200
+
+    @mock.patch('cloudstorm.app.handlers.upload.logger')
+    def test_ping_error(self, mock_logger):
+        with utils.StubFetch(upload.http_client, 'POST', status=httplib.INTERNAL_SERVER_ERROR):
+            upload.ping(PING_URL, SIGNATURE)
+        mock_logger.error.assert_called_with('Ping request rejected.')
 
 
 def make_producer(content=None, error=None):
@@ -133,6 +143,7 @@ class TestUploadUrlHandler(testing.AsyncHTTPTestCase):
         self.content_type = 'application/json'
         self.start_url = 'http://localhost:5000/start/'
         self.finish_url = 'http://localhost:5000/finish/'
+        self.ping_url = 'http://localhost:5000/ping/'
 
     @testing.gen_test
     def test_options(self):
@@ -151,10 +162,13 @@ class TestUploadUrlHandler(testing.AsyncHTTPTestCase):
         url, _ = sign.build_upload_url(
             sign.upload_signer,
             '/files/',
-            self.size,
-            self.content_type,
-            self.start_url,
-            self.finish_url,
+            **dict(
+                size=self.size,
+                type=self.content_type,
+                startUrl=self.start_url,
+                finishUrl=self.finish_url,
+                pingUrl=self.ping_url,
+            )
         )
         signature, body = sign.build_hook_body(
             sign.url_signer,
@@ -163,6 +177,7 @@ class TestUploadUrlHandler(testing.AsyncHTTPTestCase):
                 'type': self.content_type,
                 'startUrl': self.start_url,
                 'finishUrl': self.finish_url,
+                'pingUrl': self.ping_url,
             },
         )
         resp = yield self.http_client.fetch(
@@ -185,11 +200,14 @@ class TestUploadUrlHandler(testing.AsyncHTTPTestCase):
         url, _ = sign.build_upload_url(
             sign.upload_signer,
             '/files/',
-            self.size,
-            self.content_type,
-            self.start_url,
-            self.finish_url,
-            extra={'user': 'freddie'},
+            **dict(
+                size=self.size,
+                type=self.content_type,
+                startUrl=self.start_url,
+                finishUrl=self.finish_url,
+                pingUrl=self.ping_url,
+                extra={'user': 'freddie'},
+            )
         )
         signature, body = sign.build_hook_body(
             sign.url_signer,
@@ -198,6 +216,7 @@ class TestUploadUrlHandler(testing.AsyncHTTPTestCase):
                 'type': self.content_type,
                 'startUrl': self.start_url,
                 'finishUrl': self.finish_url,
+                'pingUrl': self.ping_url,
                 'extra': {'user': 'freddie'},
             },
         )
@@ -425,6 +444,72 @@ class TestUploadHandler(testing.AsyncHTTPTestCase):
                 body=body,
             )
         assert body == open(TEST_FILE_PATH).read()
+
+    @mock.patch('cloudstorm.queue.tasks.push_file')
+    @mock.patch('cloudstorm.app.handlers.upload.get_time')
+    @mock.patch('cloudstorm.app.handlers.upload.ping')
+    @mock.patch('cloudstorm.app.handlers.upload.build_file_path')
+    @testing.gen_test
+    def test_upload_file_no_ping_if_no_delay(self, mock_build_path, mock_ping, mock_time, mock_push_file):
+        # Freeze time at epoch
+        mock_time.return_value = 0
+        mock_build_path.return_value = TEST_FILE_PATH
+        producer = make_producer(content=['foo', 'bar', 'baz'])
+        length = 9
+        content_type = 'application/json'
+        payload, message, signature = utils.make_signed_payload(
+            sign.upload_signer,
+            size=length,
+            type=content_type,
+        )
+        url = self.get_upload_url(message, signature)
+        with utils.StubFetch(upload.http_client, 'PUT', status=httplib.CREATED):
+            resp = yield self.http_client.fetch(
+                url,
+                method='PUT',
+                headers={'Content-Type': content_type, 'Content-Length': '9'},
+                body_producer=producer,
+            )
+        assert not mock_ping.called
+
+    @mock.patch('cloudstorm.queue.tasks.push_file')
+    @mock.patch('cloudstorm.app.handlers.upload.ping')
+    @mock.patch('cloudstorm.app.handlers.upload.get_time')
+    @mock.patch('cloudstorm.app.handlers.upload.build_file_path')
+    @testing.gen_test
+    def test_upload_file_sends_ping_on_delay(self, mock_build_path, mock_time, mock_ping, mock_push_file):
+        future = concurrent.Future()
+        future._result = 'pong'
+        future._set_done()
+        mock_ping.return_value = future
+        chunk_size = 65536
+        chunks = 3
+        # Time advances by debounce interval on each call
+        def get_time():
+            value = 0
+            while True:
+                yield value
+                value += settings.PING_DEBOUNCE + 1
+        mock_time.side_effect = get_time()
+        mock_build_path.return_value = TEST_FILE_PATH
+        length = chunk_size * chunks
+        body = utils.build_random_string(length)
+        content_type = 'application/json'
+        payload, message, signature = utils.make_signed_payload(
+            sign.upload_signer,
+            size=length,
+            type=content_type,
+        )
+        url = self.get_upload_url(message, signature)
+        with utils.StubFetch(upload.http_client, 'PUT', status=httplib.CREATED):
+            resp = yield self.http_client.fetch(
+                url,
+                method='PUT',
+                headers={'Content-Type': content_type},
+                body=body,
+            )
+        mock_ping.assert_called_with(payload['pingUrl'], signature)
+        assert len(mock_ping.mock_calls) == chunks + 1
 
     @file_count_increment(0)
     @testing.gen_test

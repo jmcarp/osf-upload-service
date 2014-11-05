@@ -83,13 +83,17 @@ def test_build_upload_url(monkeypatch):
     content_type = 'application/json'
     start_url = 'http://localhost:5000/start/'
     finish_url = 'http://localhost:5000/finish/'
+    ping_url = 'http://localhost:5000/ping/'
     url, payload = sign.build_upload_url(
         sign.upload_signer,
         '/files/',
-        size,
-        content_type,
-        'http://localhost:5000/start/',
-        'http://localhost:5000/finish/',
+        **dict(
+            size=size,
+            type=content_type,
+            startUrl='http://localhost:5000/start/',
+            finishUrl='http://localhost:5000/finish/',
+            pingUrl='http://localhost:5000/ping/',
+        )
     )
     message, signature = sign.upload_signer.sign_payload(payload)
     expected_url = furl.furl()
@@ -106,6 +110,7 @@ def test_build_upload_url(monkeypatch):
     assert payload['type'] == content_type
     assert payload['startUrl'] == start_url
     assert payload['finishUrl'] == finish_url
+    assert payload['pingUrl'] == ping_url
     assert payload['expires'] == settings.UPLOAD_EXPIRATION_SECONDS + 10
 
 

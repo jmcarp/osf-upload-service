@@ -2,6 +2,7 @@
 # encoding: utf-8
 
 import os
+import time
 import uuid
 import httplib
 import logging
@@ -54,6 +55,12 @@ def int_or_none(text):
         return int(text)
     except (TypeError, ValueError):
         return None
+
+
+def get_time():
+    """Get time since epoch. Used to simplify mocking.
+    """
+    return time.time()
 
 
 def build_file_path(request, payload):
@@ -124,6 +131,33 @@ def start_upload(url, signature, payload):
         raise web.HTTPError(ERROR_MAP.get(error.code, error.code))
 
 
+@gen.coroutine
+def ping(url, signature):
+    """Notify calling application that upload request is still alive.
+
+    :param str url: Ping hook URL
+    :param str signature: Signature from signed URL
+    """
+    signature, body = sign.build_hook_body(
+        sign.webhook_signer,
+        {'uploadSignature': signature},
+    )
+    try:
+        response = yield http_client.fetch(
+            url,
+            method='POST',
+            body=body,
+            headers={
+                'Content-Type': 'application/json',
+                settings.SIGNATURE_HEADER_KEY: signature,
+            },
+        )
+        raise gen.Return(response)
+    except httpclient.HTTPError as error:
+        logger.error('Ping request rejected.')
+        logger.exception(error)
+
+
 def get_payload(message):
     try:
         return sign.unserialize_payload(message)
@@ -166,6 +200,7 @@ class UploadHandler(SentryMixin, web.RequestHandler):
         self.content_length = int_or_none(
             self.request.headers.get('Content-Length')
         )
+        self.last_ping = get_time()
         self.errors = []
 
     @utils.allow_methods(['put'])
@@ -181,12 +216,17 @@ class UploadHandler(SentryMixin, web.RequestHandler):
         self.file_pointer = open(self.file_path, 'wb')
 
     @utils.allow_methods(['put'])
+    @gen.coroutine
     def data_received(self, chunk):
         """Write data to disk.
 
         :param str chunk: Chunk of request body
         """
         self.file_pointer.write(chunk)
+        now = get_time()
+        if now > (self.last_ping + settings.PING_DEBOUNCE):
+            yield ping(self.payload['pingUrl'], self.signature)
+            self.last_ping = now
 
     def set_default_headers(self):
         self.set_header('Access-Control-Allow-Origin', '*')

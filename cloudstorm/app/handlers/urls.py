@@ -62,6 +62,7 @@ upload_url_args = {
     'type': Arg(unicode),
     'startUrl': Arg(unicode, required=True, validate=validate_url),
     'finishUrl': Arg(unicode, required=True, validate=validate_url),
+    'pingUrl': Arg(unicode, required=True, validate=validate_url),
     'extra': Arg(),
 }
 
@@ -75,11 +76,7 @@ class UploadUrlHandler(SentryMixin, web.RequestHandler):
         url, _ = sign.build_upload_url(
             sign.upload_signer,
             base_url,
-            args['size'],
-            args['type'],
-            args['startUrl'],
-            args['finishUrl'],
-            args['extra'],
+            **args
         )
         self.write({
             'status': 'success',
