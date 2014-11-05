@@ -23,6 +23,7 @@ logger.setLevel(logging.INFO)
 def iter_chunks(file_pointer, chunk_size):
     """Iterate over chunks of a file. Borrowed from @chrisseto.
     """
+    file_pointer.seek(0)
     while True:
         chunk = file_pointer.read(chunk_size)
         if not chunk:
@@ -37,6 +38,7 @@ def get_hash(file_pointer, chunk_size, hash_function):
     :param int chunk_size: Bytes to read per iteration
     :param hash_function: Hash function to apply (md5, sha1, etc.)
     """
+    file_pointer.seek(0)
     result = hash_function()
     for chunk in iter_chunks(file_pointer, chunk_size):
         result.update(chunk)
