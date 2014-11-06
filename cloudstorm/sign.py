@@ -78,16 +78,25 @@ upload_signer = Signer(settings.UPLOAD_HMAC_SECRET, settings.UPLOAD_HMAC_DIGEST)
 webhook_signer = Signer(settings.WEBHOOK_HMAC_SECRET, settings.WEBHOOK_HMAC_DIGEST)
 
 
+def get_root_furl():
+    url = furl.furl()
+    url.scheme = settings.SCHEME
+    url.host = settings.DOMAIN
+    url.port = settings.PORT
+    return url
+
+
+def get_root_url():
+    return get_root_furl().url
+
+
 def build_upload_url(signer, base_url, extra=None, **payload):
     payload.update(dict(
         extra=extra or {},
         expires=time.time() + settings.UPLOAD_EXPIRATION_SECONDS,
     ))
     message, signature = signer.sign_payload(payload)
-    url = furl.furl()
-    url.scheme = settings.SCHEME
-    url.host = settings.DOMAIN
-    url.port = settings.PORT
+    url = get_root_furl()
     url.path = base_url
     url.args.update(dict(
         message=message,

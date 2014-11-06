@@ -10,6 +10,7 @@ from tests import utils
 from tests.fixtures import file_content, temp_file
 
 import json
+import socket
 import hashlib
 import httplib
 import datetime
@@ -93,6 +94,24 @@ def test_get_hashes(file_content, temp_file):
         )
         assert hashes[hashlib.md5.__name__] == md5
         assert hashes[hashlib.sha256.__name__] == sha256
+
+
+def test_serialize_object(mock_file_object):
+    serialized = tasks.serialize_object(
+        mock_file_object,
+        md5=mock_file_object.md5,
+    )
+    expected_location = mock_file_object.location
+    expected_location['worker_url'] = sign.get_root_url()
+    expected_location['worker_host'] = socket.gethostname()
+    expected_metadata = {
+        'size': mock_file_object.size,
+        'date_modified': mock_file_object.date_modified.isoformat(),
+        'content_type': mock_file_object.content_type,
+        'md5': mock_file_object.md5,
+    }
+    assert serialized['location'] == expected_location
+    assert serialized['metadata'] == expected_metadata
 
 
 def test_push_file_main(file_content, temp_file, mock_container, monkeypatch):

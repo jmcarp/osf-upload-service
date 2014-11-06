@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 # encoding: utf-8
 
+import socket
 import hashlib
 import logging
 import functools
@@ -58,9 +59,16 @@ def clean_hash_names(hashes, hash_funcs):
 
 
 def serialize_object(file_object, **kwargs):
-    """Serialize representation of file object for webhook payload.
+    """Serialize representation of file object for webhook payload, adding
+    extra fields as specified.
+
     :param file_object: File object from storage backend
     """
+    location = file_object.location
+    location.update(dict(
+        worker_url=sign.get_root_url(),
+        worker_host=socket.gethostname(),
+    ))
     metadata = {
         'size': file_object.size,
         'date_modified': file_object.date_modified.isoformat(),
@@ -68,7 +76,7 @@ def serialize_object(file_object, **kwargs):
     }
     metadata.update(kwargs)
     return {
-        'location': file_object.location,
+        'location': location,
         'metadata': metadata,
     }
 
