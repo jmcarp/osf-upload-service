@@ -12,6 +12,8 @@ import requests
 from celery.result import AsyncResult
 from celery.utils.log import get_task_logger
 
+from . import client
+
 from cloudstorm import sign
 from cloudstorm import errors
 from cloudstorm import storage
@@ -118,19 +120,49 @@ def task(*args, **kwargs):
     return _create_task(*args, **kwargs)
 
 
+def get_countdown(attempt, init_delay, max_delay, backoff):
+    multiplier = backoff ** attempt
+    return min(init_delay * multiplier, max_delay)
+
+
+def capture_retry_message(task):
+    if not client:
+        return
+    client.captureException(extra=vars(task.request))
+
+
 @contextlib.contextmanager
-def RetryTask(task, error_types=(Exception,)):
+def RetryTask(task, attempts, init_delay, max_delay, backoff, warn_idx, error_types):
     try:
         yield
     except error_types as exc_value:
-        try_count = task.request.retries + 1
-        backoff = settings.UPLOAD_RETRY_BACKOFF * try_count
-        countdown = settings.UPLOAD_RETRY_DELAY * backoff
-        raise task.retry(
-            exc=exc_value,
-            countdown=countdown,
-            max_retries=settings.UPLOAD_RETRY_ATTEMPTS,
-        )
+        try_count = task.request.retries
+        if warn_idx is not None and try_count >= warn_idx:
+            capture_retry_message(task)
+        countdown = get_countdown(try_count, init_delay, max_delay, backoff)
+        task.max_retries = attempts
+        raise task.retry(exc=exc_value, countdown=countdown)
+
+
+RetryUpload = functools.partial(
+    RetryTask,
+    attempts=settings.UPLOAD_RETRY_ATTEMPTS,
+    init_delay=settings.UPLOAD_RETRY_INIT_DELAY,
+    max_delay=settings.UPLOAD_RETRY_MAX_DELAY,
+    backoff=settings.UPLOAD_RETRY_BACKOFF,
+    warn_idx=settings.UPLOAD_RETRY_WARN_IDX,
+    error_types=(Exception,),
+)
+
+RetryHook = functools.partial(
+    RetryTask,
+    attempts=settings.HOOK_RETRY_ATTEMPTS,
+    init_delay=settings.HOOK_RETRY_INIT_DELAY,
+    max_delay=settings.HOOK_RETRY_MAX_DELAY,
+    backoff=settings.HOOK_RETRY_BACKOFF,
+    warn_idx=settings.UPLOAD_RETRY_WARN_IDX,
+    error_types=(Exception,),
+)
 
 
 @task
@@ -146,7 +178,7 @@ def _push_file_main(self, file_path):
             hash_funcs,
         )
         file_pointer.seek(0)
-        with RetryTask(self):
+        with RetryUpload(self):
             container = storage.container_proxy.get()
             obj = container.get_or_upload_file(
                 file_pointer,
@@ -173,7 +205,7 @@ def _push_file_complete(self, response, payload, signature):
         'location': response['location'],
         'metadata': response['metadata'],
     }
-    with RetryTask(self):
+    with RetryHook(self):
         return _send_hook(data, payload)
 
 
@@ -192,7 +224,7 @@ def _push_file_error(self, uuid, payload, signature):
         'reason': 'Upload to backend failed: {0}'.format(error),
         'uploadSignature': signature,
     }
-    with RetryTask(self):
+    with RetryHook(self):
         return _send_hook(data, payload)
 
 
@@ -215,7 +247,7 @@ def _send_hook(data, payload):
 
 @task(ignore_result=True)
 def _send_hook_retry(self, data, payload):
-    with RetryTask(self):
+    with RetryHook(self):
         _send_hook(data, payload)
 
 

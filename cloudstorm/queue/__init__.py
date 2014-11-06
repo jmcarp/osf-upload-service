@@ -16,3 +16,5 @@ app.config_from_object(settings)
 if settings.SENTRY_DSN:
     client = Client(settings.SENTRY_DSN)
     register_signal(client)
+else:
+    client = None

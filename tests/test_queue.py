@@ -79,7 +79,7 @@ def check_upload_file_call(mock_container, temp_file):
 
 def check_hook_signature(request, payload):
     signature = request.headers.get(settings.SIGNATURE_HEADER_KEY)
-    assert sign.upload_signer.verify_payload(signature, payload)
+    assert sign.webhook_signer.verify_payload(signature, payload)
 
 
 def test_get_hashes(file_content, temp_file):
@@ -94,6 +94,12 @@ def test_get_hashes(file_content, temp_file):
         )
         assert hashes[hashlib.md5.__name__] == md5
         assert hashes[hashlib.sha256.__name__] == sha256
+
+
+def test_get_countdown():
+    assert tasks.get_countdown(3, 30, 60, 1) == 30
+    assert tasks.get_countdown(3, 2, 60, 2) == 16
+    assert tasks.get_countdown(3, 2, 10, 2) == 10
 
 
 def test_serialize_object(mock_file_object):
