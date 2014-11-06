@@ -32,6 +32,9 @@ class Object(core.BaseObject):
     def name(self):
         pass
     @property
+    def md5(self):
+        pass
+    @property
     def size(self):
         pass
     @property

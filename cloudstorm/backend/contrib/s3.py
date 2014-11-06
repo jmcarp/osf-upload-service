@@ -93,6 +93,10 @@ class S3Object(core.BaseObject):
         return self._s3_key.name
 
     @property
+    def md5(self):
+        return self._s3_key.etag.strip('"')
+
+    @property
     def size(self):
         return self._s3_key.size
 

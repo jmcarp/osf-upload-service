@@ -230,6 +230,10 @@ class TestObject:
         mock_object._pyrax_object.name = 'john'
         assert mock_object.name == 'john'
 
+    def test_md5(self, mock_object):
+        mock_object._pyrax_object.hash = '242434'
+        assert mock_object.md5 == '242434'
+
     def test_size(self, mock_object):
         mock_object._pyrax_object.bytes = 128
         assert mock_object.size == 128

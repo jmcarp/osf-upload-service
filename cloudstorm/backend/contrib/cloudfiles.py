@@ -140,6 +140,10 @@ class CloudFilesObject(core.BaseObject):
         return self._pyrax_object.name
 
     @property
+    def md5(self):
+        return self._pyrax_object.hash
+
+    @property
     def size(self):
         return self._pyrax_object.bytes
 

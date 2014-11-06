@@ -78,6 +78,10 @@ class BaseObject(SignedUrlBase):
         raise NotImplementedError
 
     @abc.abstractproperty
+    def md5(self):
+        raise NotImplementedError
+
+    @abc.abstractproperty
     def size(self):
         raise NotImplementedError
 

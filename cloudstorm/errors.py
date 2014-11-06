@@ -3,3 +3,6 @@
 
 class SignedUrlError(Exception):
     pass
+
+class HashMismatchError(Exception):
+    pass

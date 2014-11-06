@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 # encoding: utf-8
 
+import hashlib
 import logging
 import functools
 import contextlib
@@ -11,6 +12,7 @@ from celery.result import AsyncResult
 from celery.utils.log import get_task_logger
 
 from cloudstorm import sign
+from cloudstorm import errors
 from cloudstorm import storage
 from cloudstorm import settings
 from cloudstorm.queue import app
@@ -18,6 +20,8 @@ from cloudstorm.queue import app
 
 logger = get_task_logger(__name__)
 logger.setLevel(logging.INFO)
+
+hash_funcs = [settings.UPLOAD_PRIMARY_HASH] + settings.UPLOAD_SECONDARY_HASHES
 
 
 def iter_chunks(file_pointer, chunk_size):
@@ -31,31 +35,41 @@ def iter_chunks(file_pointer, chunk_size):
         yield chunk
 
 
-def get_hash(file_pointer, chunk_size, hash_function):
+def get_hashes(file_pointer, chunk_size, hash_funcs):
     """Iteratively compute hash of file contents. Borrowed from @chrisseto.
 
     :param file file_pointer: File to hash
     :param int chunk_size: Bytes to read per iteration
-    :param hash_function: Hash function to apply (md5, sha1, etc.)
+    :param list hash_funcs: List of hash functions to apply (md5, sha1, etc.)
     """
     file_pointer.seek(0)
-    result = hash_function()
+    hashes = {func.__name__: func() for func in hash_funcs}
     for chunk in iter_chunks(file_pointer, chunk_size):
-        result.update(chunk)
-    return result.hexdigest()
+        for result in hashes.values():
+            result.update(chunk)
+    return {name: result.hexdigest() for name, result in hashes.iteritems()}
 
 
-def serialize_object(file_object):
+def clean_hash_names(hashes, hash_funcs):
+    return {
+        func.__name__.split('_')[-1]: hashes[func.__name__]
+        for func in hash_funcs
+    }
+
+
+def serialize_object(file_object, **kwargs):
     """Serialize representation of file object for webhook payload.
     :param file_object: File object from storage backend
     """
+    metadata = {
+        'size': file_object.size,
+        'date_modified': file_object.date_modified.isoformat(),
+        'content_type': file_object.content_type,
+    }
+    metadata.update(kwargs)
     return {
         'location': file_object.location,
-        'metadata': {
-            'size': file_object.size,
-            'date_modified': file_object.date_modified.isoformat(),
-            'content_type': file_object.content_type,
-        },
+        'metadata': metadata,
     }
 
 
@@ -118,16 +132,23 @@ def _push_file_main(self, file_path):
     :param str file_path: Path to file on disk
     """
     with open(file_path) as file_pointer:
-        hash_str = get_hash(
+        hashes = get_hashes(
             file_pointer,
             settings.UPLOAD_HASH_CHUNK_SIZE,
-            settings.UPLOAD_PRIMARY_HASH,
+            hash_funcs,
         )
         file_pointer.seek(0)
         with RetryTask(self):
             container = storage.container_proxy.get()
-            obj = container.get_or_upload_file(file_pointer, hash_str)
-    return serialize_object(obj)
+            obj = container.get_or_upload_file(
+                file_pointer,
+                hashes[settings.UPLOAD_PRIMARY_HASH.__name__],
+            )
+            md5 = hashes.get(hashlib.md5.__name__)
+            if md5 != obj.md5:
+                raise errors.HashMismatchError
+    cleaned_hashes = clean_hash_names(hashes, settings.UPLOAD_SECONDARY_HASHES)
+    return serialize_object(obj, **cleaned_hashes)
 
 
 @task(ignore_result=True)

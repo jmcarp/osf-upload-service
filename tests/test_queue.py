@@ -32,8 +32,24 @@ payload, message, signature = utils.make_signed_payload(sign.upload_signer)
 
 
 @pytest.fixture
-def mock_container(monkeypatch):
+def mock_file_object(file_content):
+    mock_object = mock.Mock()
+    mock_object.size = 1024
+    mock_object.date_modified = datetime.datetime.utcnow()
+    mock_object.content_type = 'application/json'
+    mock_object.md5 = hashlib.md5(file_content).hexdigest()
+    mock_object.location = {
+        'service': 'cloudfiles',
+        'container': 'queencontainer',
+        'object': 'albums/night-at-the-opera.mp3',
+    }
+    return mock_object
+
+
+@pytest.fixture
+def mock_container(mock_file_object, monkeypatch):
     container = mock.Mock()
+    container.get_or_upload_file.return_value = mock_file_object
     monkeypatch.setattr(storage.container_proxy, '_result', container)
     return container
 
@@ -48,30 +64,16 @@ def mock_finish_url():
     )
 
 
-@pytest.fixture
-def mock_file_object():
-    mock_object = mock.Mock()
-    mock_object.size = 1024
-    mock_object.date_modified = datetime.datetime.utcnow()
-    mock_object.content_type = 'application/json'
-    mock_object.location = {
-        'service': 'cloudfiles',
-        'container': 'queencontainer',
-        'object': 'albums/night-at-the-opera.mp3',
-    }
-    return mock_object
-
-
 def check_upload_file_call(mock_container, temp_file):
-    hash_str = tasks.get_hash(
+    hashes = tasks.get_hashes(
         temp_file,
         settings.UPLOAD_HASH_CHUNK_SIZE,
-        settings.UPLOAD_PRIMARY_HASH,
+        [settings.UPLOAD_PRIMARY_HASH],
     )
     assert mock_container.get_or_upload_file.called
     call = mock_container.get_or_upload_file.call_args_list[0]
     assert call[0][0].name == temp_file.name
-    assert call[0][1] == hash_str
+    assert call[0][1] == hashes[settings.UPLOAD_PRIMARY_HASH.__name__]
 
 
 def check_hook_signature(request, payload):
@@ -79,16 +81,24 @@ def check_hook_signature(request, payload):
     assert sign.upload_signer.verify_payload(signature, payload)
 
 
-def test_get_hash(file_content, temp_file):
-    expected = hashlib.sha1(file_content).hexdigest()
+def test_get_hashes(file_content, temp_file):
+    md5 = hashlib.md5(file_content).hexdigest()
+    sha256 = hashlib.sha256(file_content).hexdigest()
     for chunk_size in [128, 1024, 2048]:
         temp_file.seek(0)
-        observed = tasks.get_hash(temp_file, chunk_size, hashlib.sha1)
-        assert expected == observed
+        hashes = tasks.get_hashes(
+            temp_file,
+            chunk_size,
+            [hashlib.md5, hashlib.sha256],
+        )
+        assert hashes[hashlib.md5.__name__] == md5
+        assert hashes[hashlib.sha256.__name__] == sha256
 
 
-def test_push_file_main(temp_file, mock_container, monkeypatch):
-    tasks._push_file_main(temp_file.name)
+def test_push_file_main(file_content, temp_file, mock_container, monkeypatch):
+    serialized = tasks._push_file_main(temp_file.name)
+    md5 = hashlib.md5(file_content).hexdigest()
+    assert serialized['metadata']['md5'] == md5
     check_upload_file_call(mock_container, temp_file)
 
 
@@ -169,8 +179,7 @@ def test_push_file_error_retry(mock_requests, monkeypatch):
 
 
 @pytest.mark.httpretty
-def test_push_file_integration_success(temp_file, mock_container, mock_finish_url, mock_file_object):
-    mock_container.get_or_upload_file.return_value = mock_file_object
+def test_push_file_integration_success(temp_file, mock_container, mock_finish_url):
     result = tasks.push_file(payload, signature, temp_file.name).get()
     check_upload_file_call(mock_container, temp_file)
     # Success callback sends correct hook payload

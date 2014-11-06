@@ -38,6 +38,7 @@ WEBHOOK_HMAC_DIGEST = hashlib.sha1
 
 # Hashing options
 UPLOAD_PRIMARY_HASH = hashlib.sha256
+UPLOAD_SECONDARY_HASHES = [hashlib.md5, hashlib.sha1]
 UPLOAD_HASH_CHUNK_SIZE = 1024 * 1024
 
 # Retry options
