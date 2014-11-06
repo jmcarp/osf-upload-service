@@ -51,10 +51,10 @@ def get_hashes(file_pointer, chunk_size, hash_funcs):
     return {name: result.hexdigest() for name, result in hashes.iteritems()}
 
 
-def clean_hash_names(hashes, hash_funcs):
+def clean_hash_names(hashes):
     return {
-        func.__name__.split('_')[-1]: hashes[func.__name__]
-        for func in hash_funcs
+        key.split('_')[-1]: value
+        for key, value in hashes.iteritems()
     }
 
 
@@ -155,7 +155,7 @@ def _push_file_main(self, file_path):
             md5 = hashes.get(hashlib.md5.__name__)
             if md5 != obj.md5:
                 raise errors.HashMismatchError
-    cleaned_hashes = clean_hash_names(hashes, settings.UPLOAD_SECONDARY_HASHES)
+    cleaned_hashes = clean_hash_names(hashes)
     return serialize_object(obj, **cleaned_hashes)
 
 
