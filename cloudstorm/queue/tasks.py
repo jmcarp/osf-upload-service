@@ -96,12 +96,7 @@ def _log_task(func):
     """
     @functools.wraps(func)
     def wrapped(self, *args, **kwargs):
-        logger.info('Called {0}(*{1}, **{2}); attempt #{3}'.format(
-            getattr(self.request, 'task', None),
-            self.request.args,
-            self.request.kwargs,
-            self.request.retries,
-        ))
+        logger.info(vars(self.request))
         return func(self, *args, **kwargs)
     return wrapped
 
