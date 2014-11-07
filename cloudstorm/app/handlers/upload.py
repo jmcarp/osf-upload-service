@@ -67,7 +67,7 @@ def build_file_path(request, payload):
     """Build path to save a cached file.
     """
     return os.path.join(
-        settings.FILE_CACHE_PATH,
+        settings.FILE_PATH_PENDING,
         str(uuid.uuid4())
     )
 

@@ -1,6 +1,8 @@
 #!/usr/bin/env python
 # encoding: utf-8
 
+import os
+import shutil
 import socket
 import hashlib
 import logging
@@ -51,6 +53,11 @@ def get_hashes(file_pointer, chunk_size, hash_funcs):
         for result in hashes.values():
             result.update(chunk)
     return {name: result.hexdigest() for name, result in hashes.iteritems()}
+
+
+def copy_completed_file(file_path, primary_hash):
+    destination = os.path.join(settings.FILE_PATH_COMPLETE, primary_hash)
+    shutil.move(file_path, destination)
 
 
 def clean_hash_names(hashes):
@@ -178,15 +185,14 @@ def _push_file_main(self, file_path):
             hash_funcs,
         )
         file_pointer.seek(0)
+        primary_hash = hashes[settings.UPLOAD_PRIMARY_HASH.__name__]
         with RetryUpload(self):
             container = storage.container_proxy.get()
-            obj = container.get_or_upload_file(
-                file_pointer,
-                hashes[settings.UPLOAD_PRIMARY_HASH.__name__],
-            )
+            obj = container.get_or_upload_file(file_pointer, primary_hash)
             md5 = hashes.get(hashlib.md5.__name__)
             if md5 != obj.md5:
                 raise errors.HashMismatchError
+    copy_completed_file(file_path, primary_hash)
     cleaned_hashes = clean_hash_names(hashes)
     return serialize_object(obj, **cleaned_hashes)
 

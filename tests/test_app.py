@@ -35,7 +35,7 @@ from tests import utils
 from tests.fixtures import file_content, temp_file
 
 
-TEST_FILE_PATH = '/tmp/test'
+TEST_FILE_PATH = os.path.join(settings.FILE_PATH_PENDING, 'test')
 START_UPLOAD_URL = 'http://localhost:5000/start/'
 PING_URL = 'http://localhost:5000/ping/'
 PAYLOAD = {
@@ -127,7 +127,7 @@ def make_producer(content=None, error=None):
 
 
 def count_cached_files():
-    return len(os.listdir(settings.FILE_CACHE_PATH))
+    return len(os.listdir(settings.FILE_PATH_PENDING))
 
 
 def file_count_increment(increment):
@@ -435,6 +435,7 @@ class TestUploadHandler(testing.AsyncHTTPTestCase):
         except OSError:
             pass
 
+    @file_count_increment(1)
     @mock.patch('cloudstorm.queue.tasks.push_file')
     @mock.patch('cloudstorm.app.handlers.upload.build_file_path')
     @testing.gen_test

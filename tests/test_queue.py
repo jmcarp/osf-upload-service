@@ -9,6 +9,7 @@ import pytest_httpretty
 from tests import utils
 from tests.fixtures import file_content, temp_file
 
+import os
 import json
 import socket
 import hashlib
@@ -123,8 +124,12 @@ def test_serialize_object(mock_file_object):
 def test_push_file_main(file_content, temp_file, mock_container, monkeypatch):
     serialized = tasks._push_file_main(temp_file.name)
     md5 = hashlib.md5(file_content).hexdigest()
+    primary_hash = settings.UPLOAD_PRIMARY_HASH(file_content).hexdigest()
     assert serialized['metadata']['md5'] == md5
     check_upload_file_call(mock_container, temp_file)
+    destination = os.path.join(settings.FILE_PATH_COMPLETE, primary_hash)
+    assert os.path.exists(destination)
+    assert not os.path.exists(temp_file.name)
 
 
 def test_push_file_main_error_retry(temp_file, mock_container):
