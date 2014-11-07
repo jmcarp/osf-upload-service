@@ -68,6 +68,31 @@ def test_delete_file_deleted(temp_file):
     upload.delete_file(temp_file)
 
 
+@pytest.fixture
+def mock_http_client(monkeypatch):
+    mock_client = mock.Mock()
+    monkeypatch.setattr(upload, 'http_client', mock_client)
+    return mock_client
+
+
+def test_ping(mock_http_client):
+    upload.ping(PING_URL, SIGNATURE)
+    signature, body = sign.build_hook_body(
+        sign.webhook_signer,
+        {'uploadSignature': SIGNATURE},
+    )
+    mock_http_client.fetch.assert_called_with(
+        PING_URL,
+        method='POST',
+        body=body,
+        headers={
+            'Content-Type': 'application/json',
+            settings.SIGNATURE_HEADER_KEY: signature,
+        },
+        callback=upload.ping_callback,
+    )
+
+
 class TestWebHooks(testing.AsyncTestCase):
 
     @testing.gen_test
@@ -82,18 +107,6 @@ class TestWebHooks(testing.AsyncTestCase):
             with pytest.raises(web.HTTPError) as excinfo:
                 resp = yield upload.start_upload(START_UPLOAD_URL, SIGNATURE, PAYLOAD)
             assert excinfo.value.status_code == 409
-
-    @testing.gen_test
-    def test_ping(self):
-        with utils.StubFetch(upload.http_client, 'POST', status=httplib.OK):
-            resp = yield upload.ping(PING_URL, SIGNATURE)
-        assert resp.code == 200
-
-    @mock.patch('cloudstorm.app.handlers.upload.logger')
-    def test_ping_error(self, mock_logger):
-        with utils.StubFetch(upload.http_client, 'POST', status=httplib.INTERNAL_SERVER_ERROR):
-            upload.ping(PING_URL, SIGNATURE)
-        mock_logger.error.assert_called_with('Ping request rejected.')
 
 
 def make_producer(content=None, error=None):

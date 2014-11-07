@@ -131,7 +131,16 @@ def start_upload(url, signature, payload):
         raise web.HTTPError(ERROR_MAP.get(error.code, error.code))
 
 
-@gen.coroutine
+def ping_callback(response):
+    """Handle error responses from ping hook.
+
+    :param HTTPResponse response: Response from `fetch`
+    """
+    if response.error:
+        logger.error('Ping request rejected.')
+        logger.exception(response.error)
+
+
 def ping(url, signature):
     """Notify calling application that upload request is still alive.
 
@@ -142,20 +151,16 @@ def ping(url, signature):
         sign.webhook_signer,
         {'uploadSignature': signature},
     )
-    try:
-        response = yield http_client.fetch(
-            url,
-            method='POST',
-            body=body,
-            headers={
-                'Content-Type': 'application/json',
-                settings.SIGNATURE_HEADER_KEY: signature,
-            },
-        )
-        raise gen.Return(response)
-    except httpclient.HTTPError as error:
-        logger.error('Ping request rejected.')
-        logger.exception(error)
+    http_client.fetch(
+        url,
+        method='POST',
+        body=body,
+        headers={
+            'Content-Type': 'application/json',
+            settings.SIGNATURE_HEADER_KEY: signature,
+        },
+        callback=ping_callback,
+    )
 
 
 def get_payload(message):
@@ -216,7 +221,6 @@ class UploadHandler(SentryMixin, web.RequestHandler):
         self.file_pointer = open(self.file_path, 'wb')
 
     @utils.allow_methods(['put'])
-    @gen.coroutine
     def data_received(self, chunk):
         """Write data to disk.
 
@@ -225,7 +229,7 @@ class UploadHandler(SentryMixin, web.RequestHandler):
         self.file_pointer.write(chunk)
         now = get_time()
         if now > (self.last_ping + settings.PING_DEBOUNCE):
-            yield ping(self.payload['pingUrl'], self.signature)
+            ping(self.payload['pingUrl'], self.signature)
             self.last_ping = now
 
     def set_default_headers(self):
