@@ -12,6 +12,15 @@ from cloudstorm.app.handlers import urls
 from cloudstorm.app.handlers import upload
 
 
+def make_ssl_options():
+    if not settings.USE_SSL:
+        return None
+    return {
+        'certfile': settings.SSL_CERT_FILE,
+        'keyfile': settings.SSL_KEY_FILE,
+    }
+
+
 def make_app(debug=False):
     app = web.Application(
         [
@@ -27,7 +36,7 @@ def make_app(debug=False):
 
 def main(port, processes, debug):
     app = make_app(debug and processes == 1)
-    server = httpserver.HTTPServer(app)
+    server = httpserver.HTTPServer(app, ssl_options=make_ssl_options())
     server.bind(port)
     server.start(processes)
     ioloop.IOLoop.current().start()

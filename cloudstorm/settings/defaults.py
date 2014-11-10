@@ -19,6 +19,10 @@ PING_DEBOUNCE = 60
 FILE_PATH_PENDING = '/tmp/pending'
 FILE_PATH_COMPLETE = '/tmp/complete'
 
+USE_SSL = False
+SSL_CERT_FILE = 'changeme'
+SSL_KEY_FILE = 'changeme'
+
 # Backend options
 STORAGE_CLIENT_CLASS = None
 STORAGE_CLIENT_OPTIONS = {
