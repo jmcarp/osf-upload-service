@@ -40,6 +40,7 @@ START_UPLOAD_URL = 'http://localhost:5000/start/'
 PING_URL = 'http://localhost:5000/ping/'
 PAYLOAD = {
     'startUrl': 'http://httpbin.org/start',
+    'cachedUrl': 'http://httpbin.org/cached',
     'finishUrl': 'http://httpbin.org/finish',
     'pingUrl': 'http://httpbin.org/ping',
 }
@@ -154,9 +155,10 @@ class TestUploadUrlHandler(testing.AsyncHTTPTestCase):
         super(TestUploadUrlHandler, self).setUp()
         self.size = 1024
         self.content_type = 'application/json'
-        self.start_url = 'http://localhost:5000/start/'
-        self.finish_url = 'http://localhost:5000/finish/'
-        self.ping_url = 'http://localhost:5000/ping/'
+        self.start_url = 'http://localhost:5000/start'
+        self.cached_url = 'http://localhost:5000/cached'
+        self.finish_url = 'http://localhost:5000/finish'
+        self.ping_url = 'http://localhost:5000/ping'
 
     @testing.gen_test
     def test_options(self):
@@ -179,6 +181,7 @@ class TestUploadUrlHandler(testing.AsyncHTTPTestCase):
                 size=self.size,
                 type=self.content_type,
                 startUrl=self.start_url,
+                cachedUrl=self.cached_url,
                 finishUrl=self.finish_url,
                 pingUrl=self.ping_url,
             )
@@ -189,6 +192,7 @@ class TestUploadUrlHandler(testing.AsyncHTTPTestCase):
                 'size': self.size,
                 'type': self.content_type,
                 'startUrl': self.start_url,
+                'cachedUrl': self.cached_url,
                 'finishUrl': self.finish_url,
                 'pingUrl': self.ping_url,
             },
@@ -217,6 +221,7 @@ class TestUploadUrlHandler(testing.AsyncHTTPTestCase):
                 size=self.size,
                 type=self.content_type,
                 startUrl=self.start_url,
+                cachedUrl=self.cached_url,
                 finishUrl=self.finish_url,
                 pingUrl=self.ping_url,
                 extra={'user': 'freddie'},
@@ -228,6 +233,7 @@ class TestUploadUrlHandler(testing.AsyncHTTPTestCase):
                 'size': self.size,
                 'type': self.content_type,
                 'startUrl': self.start_url,
+                'cachedUrl': self.cached_url,
                 'finishUrl': self.finish_url,
                 'pingUrl': self.ping_url,
                 'extra': {'user': 'freddie'},
@@ -436,10 +442,11 @@ class TestUploadHandler(testing.AsyncHTTPTestCase):
             pass
 
     @file_count_increment(1)
+    @mock.patch('cloudstorm.queue.tasks.send_hook')
     @mock.patch('cloudstorm.queue.tasks.push_file')
     @mock.patch('cloudstorm.app.handlers.upload.build_file_path')
     @testing.gen_test
-    def test_upload_file(self, mock_build_path, mock_push_file):
+    def test_upload_file(self, mock_build_path, mock_push_file, mock_send_hook):
         mock_build_path.return_value = TEST_FILE_PATH
         length = 1024
         content_type = 'application/json'
@@ -458,6 +465,13 @@ class TestUploadHandler(testing.AsyncHTTPTestCase):
                 body=body,
             )
         assert body == open(TEST_FILE_PATH).read()
+        mock_send_hook.assert_called_with(
+            {
+                'status': 'success',
+                'uploadSignature': signature,
+            },
+            payload['cachedUrl'],
+        )
 
     @mock.patch('cloudstorm.queue.tasks.push_file')
     @mock.patch('cloudstorm.app.handlers.upload.get_time')
@@ -620,7 +634,7 @@ class TestUploadHandler(testing.AsyncHTTPTestCase):
                 'reason': upload.MESSAGES['INTERRUPTED'],
                 'uploadSignature': signature,
             },
-            payload,
+            payload['finishUrl'],
         )
 
     @mock.patch('cloudstorm.queue.tasks.send_hook')
@@ -655,5 +669,5 @@ class TestUploadHandler(testing.AsyncHTTPTestCase):
                 'reason': upload.MESSAGES['INTERRUPTED'],
                 'uploadSignature': signature,
             },
-            payload,
+            payload['finishUrl'],
         )

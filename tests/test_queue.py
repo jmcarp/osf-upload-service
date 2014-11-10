@@ -143,7 +143,7 @@ def test_push_file_main_error_retry(temp_file, mock_container):
 
 @pytest.mark.httpretty
 def test_send_hook_retry(mock_finish_url):
-    tasks._send_hook_retry({'topping': 'peppers'}, payload)
+    tasks._send_hook_retry({'topping': 'peppers'}, payload['finishUrl'])
     request = httpretty.last_request()
     request_body = json.loads(request.body)
     check_hook_signature(request, request_body)

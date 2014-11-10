@@ -251,6 +251,13 @@ class UploadHandler(SentryMixin, web.RequestHandler):
             )
         self.file_pointer.close()
         tasks.push_file(self.payload, self.signature, self.file_path)
+        tasks.send_hook(
+            {
+                'status': 'success',
+                'uploadSignature': self.signature,
+            },
+            self.payload['cachedUrl'],
+        )
         self.write({'status': 'success'})
 
     def teardown(self):
@@ -266,7 +273,7 @@ class UploadHandler(SentryMixin, web.RequestHandler):
                     'reason': reason,
                     'uploadSignature': self.signature,
                 },
-                self.payload,
+                self.payload['finishUrl'],
             )
             delete_file(self.file_pointer)
 

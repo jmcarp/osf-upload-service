@@ -207,7 +207,7 @@ def _push_file_complete(self, response, payload, signature):
         'metadata': response['metadata'],
     }
     with RetryHook(self):
-        return _send_hook(data, payload)
+        return _send_hook(data, payload['finishUrl'])
 
 
 @task(ignore_result=True)
@@ -226,18 +226,18 @@ def _push_file_error(self, uuid, payload, signature):
         'uploadSignature': signature,
     }
     with RetryHook(self):
-        return _send_hook(data, payload)
+        return _send_hook(data, payload['finishUrl'])
 
 
-def _send_hook(data, payload):
+def _send_hook(data, url):
     """Send web hook to calling application, retrying on failure.
 
     :param dict data: JSON-serializable request body
-    :param dict payload: Payload from signed URL
+    :param str url: Hook target URL
     """
     signature, body = sign.build_hook_body(sign.webhook_signer, data)
     return requests.put(
-        payload['finishUrl'],
+        url,
         data=body,
         headers={
             'Content-Type': 'application/json',
@@ -247,13 +247,13 @@ def _send_hook(data, payload):
 
 
 @task(ignore_result=True)
-def _send_hook_retry(self, data, payload):
+def _send_hook_retry(self, data, url):
     with RetryHook(self):
-        _send_hook(data, payload)
+        _send_hook(data, url)
 
 
-def send_hook(data, payload):
-    return _send_hook_retry.apply_async((data, payload))
+def send_hook(data, url):
+    return _send_hook_retry.apply_async((data, url))
 
 
 def push_file(payload, signature, file_path):

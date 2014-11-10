@@ -22,6 +22,7 @@ def make_payload(**kwargs):
         'size': 1024 * 1024,
         'type': 'application/json',
         'startUrl': 'http://localhost:5000/start',
+        'cachedUrl': 'http://localhost:5000/cached',
         'finishUrl': 'http://localhost:5000/finish',
         'pingUrl': 'http://localhost:5000/ping',
         'expires': time.time() + 60,
