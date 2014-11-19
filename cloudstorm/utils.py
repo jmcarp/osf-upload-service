@@ -68,5 +68,5 @@ def create_parity_files(file_path, redundancy=5):
         return [
             os.path.abspath(fpath)
             for fpath in
-            glob.glob(os.path.join(path, '{}.*.par2'.format(name)))
+            glob.glob(os.path.join(path, '{}*.par2'.format(name)))
         ]

@@ -5,6 +5,7 @@ import mock
 import pytest
 import httpretty
 import pytest_httpretty
+import re
 
 from tests import utils
 from tests.fixtures import file_content, temp_file
@@ -132,14 +133,19 @@ def test_serialize_object(mock_file_object):
     assert serialized['metadata'] == expected_metadata
 
 
-def test_parity_create_files(file_content, temp_file):
+def test_parity_create_files(file_content, temp_file, mock_parity_container):
     files = tasks._parity_create_files(temp_file.name)
     assert type(files) is list
     for file_path in files:
         assert os.path.exists(file_path)
+    # check for the single hash.par2 index file
+    assert any([
+        len(file_path.split('.')) == 2
+        for file_path in files
+    ])
 
 
-def test_parity_create_files_error(file_content, temp_file, monkeypatch):
+def test_parity_create_files_error(file_content, temp_file, mock_parity_container, monkeypatch):
     monkeypatch.setattr('cloudstorm.utils.subprocess.call', mock.Mock(return_value=1))
     with pytest.raises(ParchiveException):
         tasks._parity_create_files(temp_file.name)
