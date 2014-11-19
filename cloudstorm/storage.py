@@ -11,8 +11,15 @@ def _get_storage_client():
 client_proxy = LazyContainer(_get_storage_client)
 
 
+def _get_parity_container():
+    return client_proxy.get().create_container(
+        settings.PARITY_CONTAINER_NAME
+    )
+parity_container_proxy = LazyContainer(_get_parity_container)
+
+
 def _get_storage_container():
     return client_proxy.get().create_container(
         settings.STORAGE_CONTAINER_NAME
     )
-container_proxy = LazyContainer(_get_storage_container)
+storage_container_proxy = LazyContainer(_get_storage_container)

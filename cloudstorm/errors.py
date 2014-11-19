@@ -5,3 +5,6 @@ class SignedUrlError(Exception):
 
 class HashMismatchError(Exception):
     pass
+
+class ParchiveException(Exception):
+    pass
