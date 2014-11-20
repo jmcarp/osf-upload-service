@@ -58,10 +58,13 @@ class BaseContainer(SignedUrlBase):
         raise NotImplementedError
 
     def get_or_upload_file(self, fobj, name):
+        """
+        :return: Tuple of (<file object>, <created>)
+        """
         try:
-            return self.get_object(name)
+            return self.get_object(name), False
         except errors.NotFound:
-            return self.upload_file(fobj, name)
+            return self.upload_file(fobj, name), True
 
     def __repr__(self):
         return '<{klass}: {name}>'.format(

@@ -10,6 +10,7 @@ import contextlib
 
 import requests
 
+from celery import group
 from celery.result import AsyncResult
 from celery.utils.log import get_task_logger
 
@@ -182,28 +183,29 @@ def _push_file_main(self, file_path):
         primary_hash = hashes[settings.UPLOAD_PRIMARY_HASH.__name__]
         with RetryUpload(self):
             container = storage.container_proxy.get()
-            obj = container.get_or_upload_file(file_pointer, primary_hash)
+            obj, created = container.get_or_upload_file(file_pointer, primary_hash)
             md5 = hashes.get(hashlib.md5.__name__)
             if md5 != obj.md5:
                 raise errors.HashMismatchError
     copy_completed_file(file_path, primary_hash)
     cleaned_hashes = clean_hash_names(hashes)
-    return serialize_object(obj, **cleaned_hashes)
+    return serialize_object(obj, **cleaned_hashes), created
 
 
 @task(ignore_result=True)
-def _push_file_complete(self, response, payload, signature):
+def _push_file_complete(self, (obj, created), payload, signature):
     """Completion callback for `push_file_main`.
 
-    :param response: Object data returned by `push_file_main`
+    :param dict obj: Serialized object data returned by `push_file_main`
+    :param bool created: Object was created on backend
     :param dict payload: Payload from signed URL
     :param str signature: Signature from signed URL
     """
     data = {
         'status': 'success',
         'uploadSignature': signature,
-        'location': response['location'],
-        'metadata': response['metadata'],
+        'location': obj['location'],
+        'metadata': obj['metadata'],
     }
     with RetryHook(self):
         return _send_hook(data, payload['finishUrl'])
@@ -226,6 +228,34 @@ def _push_file_error(self, uuid, payload, signature):
     }
     with RetryHook(self):
         return _send_hook(data, payload['finishUrl'])
+
+
+@task
+def _push_file_archive(self, (obj, created), payload, signature):
+    if not created:
+        return
+    file_name = obj['location']['object']
+    file_path = os.path.join(settings.FILE_PATH_COMPLETE, file_name)
+    with RetryUpload(self):
+        vault = storage.vault_proxy.get()
+        glacier_id = vault.upload_archive(file_path, description=file_name)
+        metadata = {
+            'vault': vault.name,
+            'archive': glacier_id,
+        }
+    _push_archive_complete.delay(metadata, payload, signature)
+
+
+@task(ignore_result=True)
+def _push_archive_complete(self, metadata, payload, signature):
+    data = {
+        'status': 'success',
+        'uploadSignature': signature,
+        'metadata': metadata,
+    }
+    data.update(metadata)
+    with RetryHook(self):
+        return _send_hook(data, payload['archiveUrl'])
 
 
 def _send_hook(data, url):
@@ -263,8 +293,17 @@ def push_file(payload, signature, file_path):
     :param str signature: Signature from signed URL
     :param str file_path: Path to file on disk
     """
+    partial = {
+        'payload': payload,
+        'signature': signature,
+    }
+    success_callback = group(
+        _push_file_complete.s(**partial),
+        _push_file_archive.s(**partial),
+    )
+    error_callback = _push_file_error.s(**partial)
     return _push_file_main.apply_async(
         (file_path,),
-        link=_push_file_complete.s(payload=payload, signature=signature),
-        link_error=_push_file_error.s(payload=payload, signature=signature),
+        link=success_callback,
+        link_error=error_callback,
     )

@@ -25,6 +25,7 @@ def make_payload(**kwargs):
         'cachedUrl': 'http://localhost:5000/cached',
         'finishUrl': 'http://localhost:5000/finish',
         'pingUrl': 'http://localhost:5000/ping',
+        'archiveUrl': 'http://localhost:5000/archived',
         'expires': time.time() + 60,
     }
     payload.update(kwargs)

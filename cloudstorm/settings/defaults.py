@@ -31,6 +31,11 @@ STORAGE_CLIENT_OPTIONS = {
 }
 STORAGE_CONTAINER_NAME = None
 
+# Glacier options
+AWS_ACCESS_KEY = 'changeme'
+AWS_SECRET_KEY = 'changeme'
+GLACIER_VAULT = 'changeme'
+
 # HMAC options
 SIGNATURE_HEADER_KEY = 'X-Signature'
 URLS_HMAC_SECRET = 'changeme'

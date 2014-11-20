@@ -20,6 +20,7 @@ import tempfile
 from celery.result import AsyncResult
 
 from cloudstorm import sign
+from cloudstorm import errors
 from cloudstorm import settings
 
 # Patch settings for testing
@@ -32,6 +33,8 @@ from cloudstorm import storage
 
 payload, message, signature = utils.make_signed_payload(sign.upload_signer)
 
+archive_name = '132c6c'
+
 
 @pytest.fixture
 def mock_file_object(file_content):
@@ -43,7 +46,7 @@ def mock_file_object(file_content):
     mock_object.location = {
         'service': 'cloudfiles',
         'container': 'queencontainer',
-        'object': 'albums/night-at-the-opera.mp3',
+        'object': hashlib.sha256(file_content).hexdigest(),
     }
     return mock_object
 
@@ -51,9 +54,18 @@ def mock_file_object(file_content):
 @pytest.fixture
 def mock_container(mock_file_object, monkeypatch):
     container = mock.Mock()
-    container.get_or_upload_file.return_value = mock_file_object
+    container.get_or_upload_file.return_value = (mock_file_object, True)
     monkeypatch.setattr(storage.container_proxy, '_result', container)
     return container
+
+
+@pytest.fixture
+def mock_vault(monkeypatch):
+    vault = mock.Mock()
+    vault.name = settings.GLACIER_VAULT
+    vault.upload_archive.return_value = archive_name
+    monkeypatch.setattr(storage.vault_proxy, '_result', vault)
+    return vault
 
 
 @pytest.fixture
@@ -61,6 +73,16 @@ def mock_finish_url():
     httpretty.register_uri(
         'PUT',
         payload['finishUrl'],
+        status=httplib.OK,
+        body='ack',
+    )
+
+
+@pytest.fixture
+def mock_archive_url():
+    httpretty.register_uri(
+        'PUT',
+        payload['archiveUrl'],
         status=httplib.OK,
         body='ack',
     )
@@ -122,7 +144,7 @@ def test_serialize_object(mock_file_object):
 
 
 def test_push_file_main(file_content, temp_file, mock_container, monkeypatch):
-    serialized = tasks._push_file_main(temp_file.name)
+    serialized, created = tasks._push_file_main(temp_file.name)
     md5 = hashlib.md5(file_content).hexdigest()
     primary_hash = settings.UPLOAD_PRIMARY_HASH(file_content).hexdigest()
     assert serialized['metadata']['md5'] == md5
@@ -130,6 +152,17 @@ def test_push_file_main(file_content, temp_file, mock_container, monkeypatch):
     destination = os.path.join(settings.FILE_PATH_COMPLETE, primary_hash)
     assert os.path.exists(destination)
     assert not os.path.exists(temp_file.name)
+
+
+def test_push_file_main_md5_mismatch(file_content, temp_file, mock_file_object, mock_container, monkeypatch):
+    mock_file_object.md5 = 'wrong-hash'
+    with pytest.raises(errors.HashMismatchError):
+        tasks._push_file_main(temp_file.name)
+    check_upload_file_call(mock_container, temp_file)
+    primary_hash = settings.UPLOAD_PRIMARY_HASH(file_content).hexdigest()
+    destination = os.path.join(settings.FILE_PATH_COMPLETE, primary_hash)
+    assert not os.path.exists(destination)
+    assert os.path.exists(temp_file.name)
 
 
 def test_push_file_main_error_retry(temp_file, mock_container):
@@ -160,11 +193,11 @@ def test_send_hook_retry_error_retry(mock_requests):
 
 @pytest.mark.httpretty
 def test_push_file_complete(mock_finish_url):
-    response = {
+    obj = {
         'location': {'service': 'cloud'},
         'metadata': {'size': 1024},
     }
-    resp = tasks._push_file_complete(response, payload, signature)
+    resp = tasks._push_file_complete((obj, True), payload, signature)
     assert resp.status_code == httplib.OK
     request_body = json.loads(resp.request.body)
     check_hook_signature(resp.request, request_body)
@@ -175,11 +208,11 @@ def test_push_file_complete(mock_finish_url):
 @mock.patch('cloudstorm.queue.tasks.requests')
 def test_push_file_complete_error_retry(mock_requests):
     mock_requests.put.side_effect = Exception
-    response = {
+    obj = {
         'location': {'service': 'cloud'},
         'metadata': {'size': 1024},
     }
-    resp = tasks._push_file_complete.apply_async((response, payload, signature))
+    resp = tasks._push_file_complete.apply_async(((obj, False), payload, signature))
     expected_tries = settings.UPLOAD_RETRY_ATTEMPTS + 1
     assert mock_requests.put.call_count == expected_tries
 
@@ -198,6 +231,44 @@ def test_push_file_error(mock_finish_url, monkeypatch):
     assert request_body['uploadSignature'] == signature
 
 
+def test_push_file_archive_created(mock_file_object, mock_vault, monkeypatch):
+    mock_push_complete = mock.Mock()
+    monkeypatch.setattr(tasks, '_push_archive_complete', mock_push_complete)
+    serialized = tasks.serialize_object(mock_file_object)
+    tasks._push_file_archive((serialized, True), payload, signature)
+    file_name = serialized['location']['object']
+    file_path = os.path.join(settings.FILE_PATH_COMPLETE, file_name)
+    mock_vault.upload_archive.assert_called_with(file_path, description=file_name)
+    metadata = {
+        'vault': settings.GLACIER_VAULT,
+        'archive': archive_name,
+    }
+    mock_push_complete.delay.assert_called_with(metadata, payload, signature)
+
+
+def test_push_file_archive_not_created(mock_file_object, mock_vault):
+    serialized = tasks.serialize_object(mock_file_object)
+    resp = tasks._push_file_archive((serialized, False), payload, signature)
+    assert not mock_vault.upload_archive.called
+    assert resp is None
+
+
+@pytest.mark.httpretty
+def test_push_archive_complete(mock_archive_url):
+    metadata = {
+        'vault': settings.GLACIER_VAULT,
+        'archive': archive_name,
+    }
+    resp = tasks._push_archive_complete(metadata, payload, signature)
+    assert resp.status_code == httplib.OK
+    # Success callback sends correct hook payload
+    request_body = json.loads(resp.request.body)
+    check_hook_signature(resp.request, request_body)
+    assert request_body['status'] == 'success'
+    assert request_body['uploadSignature'] == signature
+    assert request_body['metadata'] == metadata
+
+
 @mock.patch('cloudstorm.queue.tasks.requests')
 def test_push_file_error_retry(mock_requests, monkeypatch):
     error = Exception('disaster')
@@ -209,7 +280,7 @@ def test_push_file_error_retry(mock_requests, monkeypatch):
 
 
 @pytest.mark.httpretty
-def test_push_file_integration_success(temp_file, mock_container, mock_finish_url):
+def test_push_file_integration_success(temp_file, mock_container, mock_vault, mock_finish_url, mock_archive_url):
     result = tasks.push_file(payload, signature, temp_file.name).get()
     check_upload_file_call(mock_container, temp_file)
     # Success callback sends correct hook payload

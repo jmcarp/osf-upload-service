@@ -106,7 +106,7 @@ def test_base_container_get_or_upload_exists(monkeypatch):
     mock_get_object.return_value = 'object'
     monkeypatch.setattr(Container, 'get_object', mock_get_object)
     res = container.get_or_upload_file(None, 'albums')
-    assert res == 'object'
+    assert res == ('object', False)
     mock_get_object.assert_called_with('albums')
 
 
@@ -119,7 +119,7 @@ def test_base_container_get_or_upload_does_not_exist(monkeypatch):
     monkeypatch.setattr(Container, 'get_object', mock_get_object)
     monkeypatch.setattr(Container, 'upload_file', mock_upload_file)
     res = container.get_or_upload_file(None, 'albums')
-    assert res == 'object'
+    assert res == ('object', True)
     mock_get_object.assert_called_with('albums')
     mock_upload_file.assert_called_with(None, 'albums')
 

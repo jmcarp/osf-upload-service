@@ -63,6 +63,7 @@ upload_url_args = {
     'cachedUrl': Arg(unicode, required=True, validate=validate_url),
     'finishUrl': Arg(unicode, required=True, validate=validate_url),
     'pingUrl': Arg(unicode, required=True, validate=validate_url),
+    'archiveUrl': Arg(unicode, required=True, validate=validate_url),
     'extra': Arg(),
 }
 

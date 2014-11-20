@@ -159,6 +159,7 @@ class TestUploadUrlHandler(testing.AsyncHTTPTestCase):
         self.cached_url = 'http://localhost:5000/cached'
         self.finish_url = 'http://localhost:5000/finish'
         self.ping_url = 'http://localhost:5000/ping'
+        self.archive_url = 'http://localhost:5000/archived'
 
     @testing.gen_test
     def test_options(self):
@@ -184,6 +185,7 @@ class TestUploadUrlHandler(testing.AsyncHTTPTestCase):
                 cachedUrl=self.cached_url,
                 finishUrl=self.finish_url,
                 pingUrl=self.ping_url,
+                archiveUrl=self.archive_url,
             )
         )
         signature, body = sign.build_hook_body(
@@ -195,6 +197,7 @@ class TestUploadUrlHandler(testing.AsyncHTTPTestCase):
                 'cachedUrl': self.cached_url,
                 'finishUrl': self.finish_url,
                 'pingUrl': self.ping_url,
+                'archiveUrl': self.archive_url,
             },
         )
         resp = yield self.http_client.fetch(
@@ -224,6 +227,7 @@ class TestUploadUrlHandler(testing.AsyncHTTPTestCase):
                 cachedUrl=self.cached_url,
                 finishUrl=self.finish_url,
                 pingUrl=self.ping_url,
+                archiveUrl=self.archive_url,
                 extra={'user': 'freddie'},
             )
         )
@@ -236,6 +240,7 @@ class TestUploadUrlHandler(testing.AsyncHTTPTestCase):
                 'cachedUrl': self.cached_url,
                 'finishUrl': self.finish_url,
                 'pingUrl': self.ping_url,
+                'archiveUrl': self.archive_url,
                 'extra': {'user': 'freddie'},
             },
         )
