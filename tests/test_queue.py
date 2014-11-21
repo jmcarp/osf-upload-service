@@ -5,6 +5,7 @@ import mock
 import pytest
 import httpretty
 import pytest_httpretty
+import re
 
 from tests import utils
 from tests.fixtures import file_content, temp_file
@@ -27,8 +28,9 @@ from cloudstorm import settings
 settings.CELERY_ALWAYS_EAGER = True
 settings.SENTRY_DSN = None
 
-from cloudstorm.queue import tasks
+from cloudstorm import errors
 from cloudstorm import storage
+from cloudstorm.queue import tasks
 
 
 payload, message, signature = utils.make_signed_payload(sign.upload_signer)
@@ -52,10 +54,21 @@ def mock_file_object(file_content):
 
 
 @pytest.fixture
-def mock_container(mock_file_object, monkeypatch):
+def mock_parity_container(mock_file_object, monkeypatch):
+    container = mock.Mock()
+    mock_file_object.md5 = mock.MagicMock()
+    mock_file_object.md5.__eq__.return_value = True
+    mock_file_object.md5.__ne__.return_value = False
+    container.get_or_upload_file.return_value = (mock_file_object, True)
+    monkeypatch.setattr(storage.parity_container_proxy, '_result', container)
+    return container
+
+
+@pytest.fixture
+def mock_storage_container(mock_file_object, monkeypatch):
     container = mock.Mock()
     container.get_or_upload_file.return_value = (mock_file_object, True)
-    monkeypatch.setattr(storage.container_proxy, '_result', container)
+    monkeypatch.setattr(storage.storage_container_proxy, '_result', container)
     return container
 
 
@@ -88,14 +101,14 @@ def mock_archive_url():
     )
 
 
-def check_upload_file_call(mock_container, temp_file):
+def check_upload_file_call(mock_storage_container, temp_file):
     hashes = tasks.get_hashes(
         temp_file,
         settings.UPLOAD_HASH_CHUNK_SIZE,
         [settings.UPLOAD_PRIMARY_HASH],
     )
-    assert mock_container.get_or_upload_file.called
-    call = mock_container.get_or_upload_file.call_args_list[0]
+    assert mock_storage_container.get_or_upload_file.called
+    call = mock_storage_container.get_or_upload_file.call_args_list[0]
     assert call[0][0].name == temp_file.name
     assert call[0][1] == hashes[settings.UPLOAD_PRIMARY_HASH.__name__]
 
@@ -143,35 +156,92 @@ def test_serialize_object(mock_file_object):
     assert serialized['metadata'] == expected_metadata
 
 
-def test_push_file_main(file_content, temp_file, mock_container, monkeypatch):
+def test_parity_create_files_created(file_content, temp_file, mock_file_object, mock_parity_container, monkeypatch):
+    mock_push_files = mock.Mock()
+    monkeypatch.setattr(tasks, '_push_parity_files', mock_push_files)
+    serialized = tasks.serialize_object(mock_file_object)
+    file_path = tasks.copy_completed_file(temp_file.name, serialized['location']['object'])
+    tasks._parity_create_files((serialized, True))
+    assert mock_push_files.called
+    file_paths = mock_push_files.call_args[0][0]
+    for file_path in file_paths:
+        assert os.path.exists(file_path)
+    expected_main_file = os.path.join(
+        settings.FILE_PATH_COMPLETE,
+        '{0}.par2'.format(serialized['location']['object']),
+    )
+    assert expected_main_file in file_paths
+
+
+def test_parity_create_files_not_created(file_content, temp_file, mock_file_object, mock_parity_container, monkeypatch):
+    mock_push_files = mock.Mock()
+    monkeypatch.setattr(tasks, '_push_parity_files', mock_push_files)
+    serialized = tasks.serialize_object(mock_file_object)
+    file_path = tasks.copy_completed_file(temp_file.name, serialized['location']['object'])
+    completed_files = os.listdir(settings.FILE_PATH_COMPLETE)
+    tasks._parity_create_files((serialized, False))
+    assert not mock_push_files.called
+    assert completed_files == os.listdir(settings.FILE_PATH_COMPLETE)
+
+
+def test_parity_create_files_error(file_content, temp_file, mock_file_object, mock_parity_container, monkeypatch):
+    monkeypatch.setattr('cloudstorm.utils.subprocess.call', mock.Mock(return_value=1))
+    serialized = tasks.serialize_object(mock_file_object)
+    with pytest.raises(errors.ParchiveError):
+        tasks._parity_create_files((serialized, True))
+
+
+def test_push_parity_file(temp_file, mock_parity_container):
+    tasks._push_parity_file(temp_file.name)
+    _, expected_name = os.path.split(temp_file.name)
+    assert mock_parity_container.get_or_upload_file.called
+    call = mock_parity_container.get_or_upload_file.call_args[0]
+    assert call[0].name == temp_file.name
+    assert call[1] == expected_name
+    assert not os.path.exists(temp_file.name)
+
+
+def test_push_parity_file_md5_mismatch(temp_file, mock_file_object, mock_parity_container):
+    mock_file_object.md5 = 'wrong-hash'
+    with pytest.raises(errors.HashMismatchError):
+        tasks._push_parity_file(temp_file.name)
+    _, expected_name = os.path.split(temp_file.name)
+    assert mock_parity_container.get_or_upload_file.called
+    call = mock_parity_container.get_or_upload_file.call_args[0]
+    assert call[0].name == temp_file.name
+    assert call[1] == expected_name
+    assert os.path.exists(temp_file.name)
+
+
+def test_push_file_main(file_content, temp_file, mock_storage_container, monkeypatch):
     serialized, created = tasks._push_file_main(temp_file.name)
     md5 = hashlib.md5(file_content).hexdigest()
     primary_hash = settings.UPLOAD_PRIMARY_HASH(file_content).hexdigest()
     assert serialized['metadata']['md5'] == md5
-    check_upload_file_call(mock_container, temp_file)
+    check_upload_file_call(mock_storage_container, temp_file)
     destination = os.path.join(settings.FILE_PATH_COMPLETE, primary_hash)
     assert os.path.exists(destination)
     assert not os.path.exists(temp_file.name)
 
 
-def test_push_file_main_md5_mismatch(file_content, temp_file, mock_file_object, mock_container, monkeypatch):
+def test_push_file_main_md5_mismatch(file_content, temp_file, mock_file_object, mock_storage_container, monkeypatch):
     mock_file_object.md5 = 'wrong-hash'
     with pytest.raises(errors.HashMismatchError):
         tasks._push_file_main(temp_file.name)
-    check_upload_file_call(mock_container, temp_file)
+    check_upload_file_call(mock_storage_container, temp_file)
     primary_hash = settings.UPLOAD_PRIMARY_HASH(file_content).hexdigest()
     destination = os.path.join(settings.FILE_PATH_COMPLETE, primary_hash)
     assert not os.path.exists(destination)
     assert os.path.exists(temp_file.name)
 
 
-def test_push_file_main_error_retry(temp_file, mock_container):
+def test_push_file_main_error_retry(temp_file, mock_storage_container):
     # Mock `AsyncResult` to handle error retrieval
     error = TypeError('not my type')
-    mock_container.get_or_upload_file.side_effect = error
+    mock_storage_container.get_or_upload_file.side_effect = error
     container = tasks._push_file_main.apply_async((temp_file.name,))
     expected_tries = settings.UPLOAD_RETRY_ATTEMPTS + 1
-    assert mock_container.get_or_upload_file.call_count == expected_tries
+    assert mock_storage_container.get_or_upload_file.call_count == expected_tries
 
 
 @pytest.mark.httpretty
@@ -280,9 +350,9 @@ def test_push_file_error_retry(mock_requests, monkeypatch):
 
 
 @pytest.mark.httpretty
-def test_push_file_integration_success(temp_file, mock_container, mock_vault, mock_finish_url, mock_archive_url):
+def test_push_file_integration_success(temp_file, mock_storage_container, mock_parity_container, mock_vault, mock_finish_url, mock_archive_url):
     result = tasks.push_file(payload, signature, temp_file.name).get()
-    check_upload_file_call(mock_container, temp_file)
+    check_upload_file_call(mock_storage_container, temp_file)
     # Success callback sends correct hook payload
     request = httpretty.last_request()
     request_body = json.loads(request.body)
@@ -292,10 +362,10 @@ def test_push_file_integration_success(temp_file, mock_container, mock_vault, mo
 
 
 @pytest.mark.httpretty
-def test_push_file_integration_push_error(temp_file, mock_container, mock_finish_url, monkeypatch):
+def test_push_file_integration_push_error(temp_file, mock_storage_container, mock_finish_url, monkeypatch):
     # Mock `AsyncResult` to handle error retrieval
     error = TypeError('not my type')
-    mock_container.get_or_upload_file.side_effect = error
+    mock_storage_container.get_or_upload_file.side_effect = error
     monkeypatch.setattr(AsyncResult, 'result', error)
     container = tasks.push_file(payload, signature, temp_file.name)
     # Task chain returns error raised during primary task
@@ -303,7 +373,7 @@ def test_push_file_integration_push_error(temp_file, mock_container, mock_finish
     assert result == error
     # Primary task is retried the right number of times
     expected_tries = settings.UPLOAD_RETRY_ATTEMPTS + 1
-    assert mock_container.get_or_upload_file.call_count == expected_tries
+    assert mock_storage_container.get_or_upload_file.call_count == expected_tries
     # Error callback sends correct hook payload
     request = httpretty.last_request()
     request_body = json.loads(request.body)

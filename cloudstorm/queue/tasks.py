@@ -20,6 +20,7 @@ from cloudstorm import sign
 from cloudstorm import errors
 from cloudstorm import storage
 from cloudstorm import settings
+from cloudstorm import utils
 from cloudstorm.queue import app
 
 
@@ -56,8 +57,9 @@ def get_hashes(file_pointer, chunk_size, hash_funcs):
 
 
 def copy_completed_file(file_path, primary_hash):
-    destination = os.path.join(settings.FILE_PATH_COMPLETE, primary_hash)
-    shutil.move(file_path, destination)
+    completed_file_path = os.path.join(settings.FILE_PATH_COMPLETE, primary_hash)
+    shutil.move(file_path, completed_file_path)
+    return file_path
 
 
 def clean_hash_names(hashes):
@@ -166,6 +168,57 @@ RetryHook = functools.partial(
     error_types=(Exception,),
 )
 
+RetryParity = functools.partial(
+    RetryTask,
+    attempts=settings.PARITY_RETRY_ATTEMPTS,
+    init_delay=settings.PARITY_RETRY_INIT_DELAY,
+    max_delay=settings.PARITY_RETRY_MAX_DELAY,
+    backoff=settings.PARITY_RETRY_BACKOFF,
+    warn_idx=settings.PARITY_RETRY_WARN_IDX,
+    error_types=(Exception,),
+)
+
+
+@task
+def _parity_create_files(self, (obj, created)):
+    if not created:
+        return
+    file_name = obj['location']['object']
+    file_path = os.path.join(settings.FILE_PATH_COMPLETE, file_name)
+    parity_file_paths = utils.create_parity_files(
+        file_path,
+        redundancy=settings.PARITY_REDUNDANCY,
+    )
+    _push_parity_files(parity_file_paths)
+
+
+def _push_parity_files(file_paths):
+    group(
+        *[
+            _push_parity_file.s(file_path)
+            for file_path in file_paths
+        ]
+    ).delay()
+
+
+@task(ignore_result=True)
+def _push_parity_file(self, file_path):
+    path, name = os.path.split(file_path)
+    with open(file_path) as file_pointer:
+        hashes = get_hashes(
+            file_pointer,
+            settings.UPLOAD_HASH_CHUNK_SIZE,
+            [hashlib.md5],
+        )
+        file_pointer.seek(0)
+        with RetryParity(self):
+            container = storage.parity_container_proxy.get()
+            obj, _ = container.get_or_upload_file(file_pointer, name)
+            md5 = hashes.get(hashlib.md5.__name__)
+            if md5 != obj.md5:
+                raise errors.HashMismatchError
+    os.remove(file_path)
+
 
 @task
 def _push_file_main(self, file_path):
@@ -182,7 +235,7 @@ def _push_file_main(self, file_path):
         file_pointer.seek(0)
         primary_hash = hashes[settings.UPLOAD_PRIMARY_HASH.__name__]
         with RetryUpload(self):
-            container = storage.container_proxy.get()
+            container = storage.storage_container_proxy.get()
             obj, created = container.get_or_upload_file(file_pointer, primary_hash)
             md5 = hashes.get(hashlib.md5.__name__)
             if md5 != obj.md5:
@@ -300,6 +353,7 @@ def push_file(payload, signature, file_path):
     success_callback = group(
         _push_file_complete.s(**partial),
         _push_file_archive.s(**partial),
+        _parity_create_files.s(),
     )
     error_callback = _push_file_error.s(**partial)
     return _push_file_main.apply_async(

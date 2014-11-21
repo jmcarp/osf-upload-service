@@ -1,8 +1,13 @@
 # encoding: utf-8
 
+import os
+import glob
 import functools
+import subprocess
 
 from werkzeug.local import LocalProxy
+
+from cloudstorm import errors
 
 
 def allow_methods(methods):
@@ -42,3 +47,29 @@ def CachedProxy(getter):
     """
     container = LazyContainer(getter)
     return LocalProxy(container.get)
+
+
+def create_parity_files(file_path, redundancy=5):
+    """
+    :raise: `ParchiveError` if creation of parity files fails
+    """
+    path, name = os.path.split(file_path)
+    with open(os.devnull, 'wb') as DEVNULL:
+        ret_code = subprocess.call(
+            [
+                'par2',
+                'c',
+                '-r{0}'.format(redundancy),
+                os.path.join(path, '{0}.par2'.format(name)),
+                file_path,
+            ],
+            stdout=DEVNULL,
+            stderr=DEVNULL,
+        )
+        if ret_code != 0:
+            raise errors.ParchiveError()
+        return [
+            os.path.abspath(fpath)
+            for fpath in
+            glob.glob(os.path.join(path, '{0}*.par2'.format(name)))
+        ]
