@@ -2,12 +2,31 @@
 
 import os
 import glob
+import errno
 import functools
 import subprocess
 
 from werkzeug.local import LocalProxy
 
 from cloudstorm import errors
+from cloudstorm import settings
+
+
+def ensure_path(path):
+    try:
+        os.makedirs(path)
+    except OSError as exception:
+        if exception.errno != errno.EEXIST:
+            raise
+
+
+def ensure_paths():
+    paths = [
+        settings.FILE_PATH_PENDING,
+        settings.FILE_PATH_COMPLETE,
+    ]
+    for path in paths:
+        ensure_path(path)
 
 
 def allow_methods(methods):

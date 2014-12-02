@@ -6,6 +6,7 @@ from tornado import httpserver
 
 from raven.contrib.tornado import AsyncSentryClient
 
+from cloudstorm import utils
 from cloudstorm import settings
 from cloudstorm.app.handlers import urls
 from cloudstorm.app.handlers import upload
@@ -34,6 +35,7 @@ def make_app(debug=False):
 
 
 def main(port, processes, debug):
+    utils.ensure_paths()
     app = make_app(debug and processes == 1)
     server = httpserver.HTTPServer(app, ssl_options=make_ssl_options())
     server.bind(port)
