@@ -18,6 +18,8 @@ PING_DEBOUNCE = 60
 FILE_PATH_PENDING = '/tmp/pending'
 FILE_PATH_COMPLETE = '/tmp/complete'
 
+MAX_REQUEST_SIZE = 1024 * 1024 * 128  # 128mb
+
 USE_SSL = False
 SSL_CERT_FILE = 'changeme'
 SSL_KEY_FILE = 'changeme'

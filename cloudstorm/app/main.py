@@ -28,6 +28,7 @@ def make_app(debug=False):
             web.url(r'/urls/download/', urls.DownloadUrlHandler, name='download_url'),
             web.url(r'/files/', upload.UploadHandler, name='upload_file'),
         ],
+        max_buffer_size=settings.MAX_REQUEST_SIZE,
         debug=debug,
     )
     app.sentry_client = AsyncSentryClient(settings.SENTRY_DSN)
